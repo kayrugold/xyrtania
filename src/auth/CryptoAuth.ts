@@ -106,7 +106,7 @@ export class CryptoAuth {
     
     try {
       // In production you would point this to your specific worker domain.
-      const workerUrl = import.meta.env.VITE_CF_WORKER_URL || 'http://localhost:8787/api/sync';
+      const workerUrl = import.meta.env.VITE_CF_WORKER_URL || 'https://xyrtania.andy-596.workers.dev/api/sync';
       
       const response = await fetch(workerUrl, {
         method: 'POST',

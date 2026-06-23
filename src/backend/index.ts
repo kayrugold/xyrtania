@@ -19,10 +19,14 @@ export default {
       return new Response(null, {
         headers: {
           "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
           "Access-Control-Allow-Headers": "Content-Type",
         }
       });
+    }
+
+    if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '')) {
+       return new Response('Xyrtania D1 Backend API is online.', { status: 200, headers: { "Access-Control-Allow-Origin": "*" } });
     }
 
     if (request.method === 'POST' && url.pathname === '/api/sync') {
