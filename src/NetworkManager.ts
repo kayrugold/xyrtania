@@ -1,4 +1,4 @@
-import { joinRoom, Room, MessageAction } from '@trystero-p2p/torrent';
+import { joinRoom, Room, MessageAction } from '@trystero-p2p/mqtt';
 import { PlayerState } from './types';
 import * as THREE from 'three';
 
@@ -18,7 +18,32 @@ export class NetworkManager {
   public onPeerLeave?: (id: string) => void;
 
   constructor(appId: string, roomName: string) {
-    this.room = joinRoom({ appId }, roomName);
+    const config = {
+      appId,
+      rtcConfig: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          {
+            urls: 'turn:openrelay.metered.ca:80',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          },
+          {
+            urls: 'turn:openrelay.metered.ca:443',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          },
+          {
+            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          }
+        ]
+      }
+    };
+    this.room = joinRoom(config, roomName);
     
     this.room.onPeerJoin = (peerId) => {
       console.log(`Peer joined: ${peerId}`);
