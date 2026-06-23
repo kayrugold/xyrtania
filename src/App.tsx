@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react'; // Trigger file watcher
 import * as THREE from 'three';
 import { WorldGrid } from './WorldGrid';
 import { PlayerState, JumpPhase } from './types';

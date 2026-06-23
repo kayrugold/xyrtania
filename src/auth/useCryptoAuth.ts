@@ -19,6 +19,23 @@ export function useCryptoAuth() {
     } else {
       setDisplayName('Anonymous ' + Math.floor(Math.random() * 1000));
     }
+
+    // Attempt to fetch fresh identity from the server
+    const fetchIdentity = async () => {
+      if (init && init.playerId) {
+        try {
+          const res = await CryptoAuth.fetchCharacter(init.playerId);
+          if (res && res.success && res.character && res.character.displayName) {
+             setDisplayName(res.character.displayName);
+             localStorage.setItem('xyrtania_display_name', res.character.displayName);
+             localStorage.setItem('xyrtania_setup_complete', 'true');
+          }
+        } catch (e) {
+          console.warn('Failed to fetch character data:', e);
+        }
+      }
+    };
+    fetchIdentity();
   }, []);
 
   // 5-minute background sync timer
@@ -33,10 +50,20 @@ export function useCryptoAuth() {
     return () => clearInterval(intervalId);
   }, [session, displayName]);
 
-  const recover = (phrase: string): boolean => {
+  const recover = async (phrase: string): Promise<boolean> => {
     const recoveredSession = CryptoAuth.recoverFromPassphrase(phrase);
     if (recoveredSession) {
       setSession(recoveredSession);
+      try {
+        const res = await CryptoAuth.fetchCharacter(recoveredSession.playerId);
+        if (res && res.success && res.character && res.character.displayName) {
+          setDisplayName(res.character.displayName);
+          localStorage.setItem('xyrtania_display_name', res.character.displayName);
+          localStorage.setItem('xyrtania_setup_complete', 'true');
+        }
+      } catch(e) {
+        console.warn('Failed to fetch recovered character', e);
+      }
       return true;
     }
     return false;

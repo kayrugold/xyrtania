@@ -120,4 +120,26 @@ export class CryptoAuth {
       return { success: true, fakeResponse: true };
     }
   }
+
+  /**
+   * Fetches the character from our Cloudflare Pages/Worker backend.
+   */
+  public static async fetchCharacter(playerId: string) {
+    try {
+      const workerUrl = import.meta.env.VITE_CF_WORKER_URL || 'https://xyrtania.andy-596.workers.dev/api/sync';
+      const fetchUrl = workerUrl.replace('/api/sync', '/api/character') + '?playerId=' + encodeURIComponent(playerId);
+      
+      const response = await fetch(fetchUrl, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!response.ok) {
+         return { success: false };
+      }
+      return await response.json();
+    } catch (err) {
+      console.warn('Could not fetch from Cloudflare Worker:', err);
+      return { success: false };
+    }
+  }
 }

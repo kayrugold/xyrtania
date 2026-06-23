@@ -85,6 +85,34 @@ export default {
       }
     }
 
+    if (request.method === 'GET' && url.pathname === '/api/character') {
+      try {
+        const playerId = url.searchParams.get('playerId');
+        if (!playerId) {
+          return new Response(JSON.stringify({ error: 'Missing playerId' }), { status: 400, headers: { "Access-Control-Allow-Origin": "*" } });
+        }
+        
+        const stmt = env.DB.prepare('SELECT display_name as displayName, level, gold, current_chunk as currentChunk FROM characters WHERE player_id = ?1');
+        const character = await stmt.bind(playerId).first();
+        
+        if (character) {
+          return new Response(JSON.stringify({ success: true, character }), {
+            headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "application/json" }
+          });
+        } else {
+          return new Response(JSON.stringify({ success: false, message: 'Not found' }), {
+            status: 404,
+            headers: { "Access-Control-Allow-Origin": "*" }
+          });
+        }
+      } catch (error) {
+        return new Response(JSON.stringify({ error: 'Internal server error while fetching character' }), { 
+          status: 500,
+          headers: { "Access-Control-Allow-Origin": "*" }
+        });
+      }
+    }
+
     return new Response('Not found', { status: 404 });
   }
 };

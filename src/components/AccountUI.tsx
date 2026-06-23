@@ -14,7 +14,9 @@ export const AccountUI: React.FC = () => {
   const [hasCopied, setHasCopied] = useState(false);
   const [hasConfirmed, setHasConfirmed] = useState(false);
   const [isSetupComplete, setIsSetupComplete] = useState(() => {
-    return localStorage.getItem('xyrtania_setup_complete') === 'true';
+    const hasCompleteFlag = localStorage.getItem('xyrtania_setup_complete') === 'true';
+    const hasExistingSession = localStorage.getItem('xyrtania_auth_session') !== null;
+    return hasCompleteFlag || hasExistingSession;
   });
 
   useEffect(() => {
@@ -30,15 +32,17 @@ export const AccountUI: React.FC = () => {
     return null; 
   }
 
-  const handleRecover = () => {
-    if (recover(phraseInput)) {
+  const handleRecover = async () => {
+    const success = await recover(phraseInput);
+    if (success) {
       setIsRecovering(false);
       setPhraseInput('');
       setErrorMsg('');
       setHasCopied(false);
       setHasConfirmed(false);
-      setIsSetupComplete(false);
-      localStorage.removeItem('xyrtania_setup_complete');
+      setIsSetupComplete(true);
+      localStorage.setItem('xyrtania_setup_complete', 'true');
+      setIsPanelOpen(false);
     } else {
       setErrorMsg('Invalid 12-word passphrase.');
     }
@@ -78,7 +82,7 @@ export const AccountUI: React.FC = () => {
       )}
 
       {/* Toggle Button for Returning Players */}
-      {isSetupComplete && !isPanelOpen && (
+      {!isPanelOpen && (
         <div className="flex items-center gap-2">
           <button 
             onClick={() => setIsPanelOpen(true)}
@@ -100,11 +104,9 @@ export const AccountUI: React.FC = () => {
         <div className="bg-black/90 text-white p-4 sm:p-5 rounded shadow-2xl w-[90vw] sm:w-80 max-w-sm max-h-[85vh] overflow-y-auto text-sm font-mono border border-emerald-900/50 backdrop-blur-md scrollbar-thin scrollbar-thumb-gray-700">
           <div className="flex justify-between items-start mb-2 sm:mb-4 border-b border-gray-800 pb-2">
               <h2 className="text-emerald-400 font-bold">{isSetupComplete ? 'Account Settings' : 'Welcome to Xyrtania'}</h2>
-              {isSetupComplete && (
-                <button onClick={() => setIsPanelOpen(false)} className="text-gray-500 hover:text-white text-xs">
-                  Close [X]
-                </button>
-              )}
+              <button onClick={() => setIsPanelOpen(false)} className="text-gray-500 hover:text-white text-xs">
+                Close [X]
+              </button>
           </div>
           
           <div className="mb-2 sm:mb-4">
