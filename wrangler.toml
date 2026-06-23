@@ -1,9 +1,7 @@
 name = "xyrtania"
 compatibility_date = "2026-06-23"
-pages_build_output_dir = "./dist"
-
-[main]
 main = "src/backend/index.ts"
+pages_build_output_dir = "./dist"
 
 [[d1_databases]]
 binding = "DB"
