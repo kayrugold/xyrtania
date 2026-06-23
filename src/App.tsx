@@ -1220,6 +1220,7 @@ export default function App() {
 
         // Network Broadcast
         state.displayName = localStorage.getItem('xyrtania_display_name') || 'Anonymous';
+        animator.updateNametag(state.displayName);
         networkManager.broadcastState(state);
 
         // Derive cardinal heading direction

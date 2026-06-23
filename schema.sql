@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS characters (
+  player_id TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  level INTEGER DEFAULT 1,
+  gold INTEGER DEFAULT 0,
+  current_chunk TEXT DEFAULT '0,0',
+  last_sync DATETIME DEFAULT CURRENT_TIMESTAMP
+);
