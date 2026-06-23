@@ -47,7 +47,8 @@ export class WorldGrid {
       transparent: true,
       opacity: 0.6,
       roughness: 0.1,
-      metalness: 0.1
+      metalness: 0.1,
+      side: THREE.DoubleSide
     });
     const waterPlane = new THREE.Mesh(waterGeo, waterMat);
     waterPlane.rotation.x = -Math.PI / 2;

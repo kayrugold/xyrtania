@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { WorldGrid } from './WorldGrid';
 import { PlayerState, JumpPhase } from './types';
 import { CharacterAnimator } from './CharacterAnimator';
+import { NetworkManager } from './NetworkManager';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -95,7 +96,7 @@ export default function App() {
     // --- 2. MULTI-SCENE DIRECTORY SETUP ---
     // Scene A: Main 3D Perspective World
     const scene = new THREE.Scene();
-    scene.background = null; // No static background color - allows transparent canvas overlay!
+    scene.background = new THREE.Color(0x050508);
     scene.fog = new THREE.FogExp2(0x050508, 0.015); // Deep slate fog gradients fade to black void in distance
 
     const camera = new THREE.PerspectiveCamera(60, width / height, 0.2, 500);
@@ -171,7 +172,11 @@ export default function App() {
     playerRootGroup.add(animator.group);
     animator.loadModelAndAnimations().catch((err) => console.error(err));
 
-    // --- 5. NATIVE 3D HUD COMPONENT GENERATION (HUD Scene) ---
+    // --- 5. NETWORK MANAGER INITIALIZATION ---
+    const networkManager = new NetworkManager('xyrtania-world-1', 'main-room');
+    const remoteAnimators = new Map<string, CharacterAnimator>();
+
+    // --- 6. NATIVE 3D HUD COMPONENT GENERATION (HUD Scene) ---
     const hudElementsGroup = new THREE.Group();
     hudScene.add(hudElementsGroup);
 
@@ -642,11 +647,11 @@ export default function App() {
       isTouchMode = false;
       if (document.pointerLockElement === el) {
         cameraYaw -= e.movementX * 0.005;
-        cameraPitch = Math.max(0.05, Math.min(1.4, cameraPitch + e.movementY * 0.005));
+        cameraPitch = Math.max(-1.4, Math.min(1.4, cameraPitch + e.movementY * 0.005));
       } else if (e.buttons > 0) {
         // Fallback for iframe where pointer lock might be blocked
         cameraYaw -= e.movementX * 0.005;
-        cameraPitch = Math.max(0.05, Math.min(1.4, cameraPitch + e.movementY * 0.005));
+        cameraPitch = Math.max(-1.4, Math.min(1.4, cameraPitch + e.movementY * 0.005));
       }
     };
     const onWindowMouseUp = () => {
@@ -760,11 +765,11 @@ export default function App() {
           
           // Project relative to camera forward vector
           const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-          camForward.y = 0;
+          if (!(state as any).isSwimming) camForward.y = 0;
           camForward.normalize();
 
           const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-          camRight.y = 0;
+          if (!(state as any).isSwimming) camRight.y = 0;
           camRight.normalize();
 
           // Mix vectors scaled by cam orientation
@@ -777,19 +782,20 @@ export default function App() {
 
       // Convert local keyboard inputs into world spaces aligned relative to camera facing heading
       if (moveVec.lengthSq() > 0.01 && !moveActive) {
+        const keyboardMag = moveVec.length();
         moveVec.normalize();
         
         const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-        camForward.y = 0;
+        if (!(state as any).isSwimming) camForward.y = 0;
         camForward.normalize();
 
         const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-        camRight.y = 0;
+        if (!(state as any).isSwimming) camRight.y = 0;
         camRight.normalize();
 
         // moveVec.z is -1 for forward, moveVec.x is -1 for left
         const alignedMoveVec = camForward.multiplyScalar(-moveVec.z).add(camRight.multiplyScalar(moveVec.x));
-        moveVec.copy(alignedMoveVec).normalize();
+        moveVec.copy(alignedMoveVec).normalize().multiplyScalar(keyboardMag);
       }
 
       // Decides movement speed scale depending on analog touch joystick drag pull
@@ -804,14 +810,14 @@ export default function App() {
       // We want walk -> jog -> run, so we use a low acceleration factor when running
       // so the player naturally transitions through the animation thresholds.
       const isSwimmingNow = (state as any).isSwimming || false;
-      const baseSpeed = isSwimmingNow ? 6 : 18;
+      const baseSpeed = isSwimmingNow ? 8 : 18;
       const targetSpeed = baseSpeed * speedScale;
       // Start out slower, accelerate slowly
       let accelFactor = isSwimmingNow ? 3 : 6.0; 
       // Deceleration is faster
-      let decelFactor = isSwimmingNow ? 4 : 12.0;
+      let decelFactor = isSwimmingNow ? 6.0 : 12.0;
 
-      if (!state.isGrounded) {
+      if (!state.isGrounded && !isSwimmingNow) {
          accelFactor = 1.0; // Less horizontal push correction in air
          decelFactor = 0.1; // Very little air drag so they retain jump momentum
       }
@@ -850,22 +856,72 @@ export default function App() {
       }
 
       const waterLevel = -0.5;
+      const waterSurfaceY = -2.0;
 
       // 1. Calculate next horizontal and vertical
       let nextY = state.position.y;
-      if (state.jumpPhase === JumpPhase.PREP) {
-        state.jumpProgress += dt;
-        if (state.jumpProgress >= 0.05) {
-          state.jumpPhase = JumpPhase.LAUNCH;
-          state.verticalVelocity = 15.5; // snappier, bolder jump
-          state.isGrounded = false;
+      
+      if (isSwimmingNow) {
+        // Sync vertical velocity to the 3D target velocity so camera pitch works naturally
+        state.verticalVelocity = state.velocity.y;
+
+        // Spacebar to ascend
+        if (keys[' ']) {
+            state.verticalVelocity += 15 * dt;
+            if (state.verticalVelocity > 5) state.verticalVelocity = 5;
         }
-      } else if (!state.isGrounded) {
-        state.verticalVelocity -= 45 * dt; // slightly stronger gravity
+
+        // Apply water drag to vertical velocity
+        state.verticalVelocity *= Math.pow(0.05, dt);
+
+        // Sync it back
+        state.velocity.y = state.verticalVelocity;
+        
+        nextY += state.verticalVelocity * dt;
+        
+        // Surface swimming barrier clamp
+        if (nextY > waterSurfaceY) {
+            nextY = waterSurfaceY;
+            if (state.verticalVelocity > 0) {
+                state.verticalVelocity = 0;
+                state.velocity.y = 0;
+            }
+        }
+
+        // To jump out of water, wait until at surface and press space to breach
+        if (nextY >= waterSurfaceY - 0.1 && keys[' '] && state.jumpPhase === JumpPhase.IDLE) {
+            state.jumpPhase = JumpPhase.PREP;
+            state.jumpProgress = 0;
+        }
+        
+        if (state.jumpPhase === JumpPhase.PREP) {
+          state.jumpProgress += dt;
+          if (state.jumpProgress >= 0.05) {
+            state.jumpPhase = JumpPhase.LAUNCH;
+            state.verticalVelocity = 10.0; // Lower realistic breach jump, not the massive 15.5 land jump
+            state.velocity.y = state.verticalVelocity;
+            state.isGrounded = false;
+            (state as any).isSwimming = false;
+          }
+        }
       } else {
-        state.verticalVelocity = 0;
+        if (state.jumpPhase === JumpPhase.PREP) {
+          state.jumpProgress += dt;
+          if (state.jumpProgress >= 0.05) {
+            state.jumpPhase = JumpPhase.LAUNCH;
+            state.verticalVelocity = 15.5; // snappier, bolder jump
+            state.isGrounded = false;
+          }
+        } else if (!state.isGrounded) {
+          state.verticalVelocity -= 45 * dt; // slightly stronger gravity
+        } else {
+          state.verticalVelocity = 0;
+        }
       }
-      nextY += state.verticalVelocity * dt;
+      
+      if (!isSwimmingNow || state.jumpPhase === JumpPhase.LAUNCH) {
+         nextY += state.verticalVelocity * dt;
+      }
 
       // Apply horizontal displacements
       state.position.addScaledVector(state.velocity, dt);
@@ -988,25 +1044,23 @@ export default function App() {
           state.jumpPhase = JumpPhase.APEX;
         }
 
-        if (floorH < waterLevel && nextY <= waterLevel) {
-           nextY = waterLevel;
-           state.verticalVelocity = 0;
-           state.isGrounded = true;
-           state.jumpPhase = state.speed > 0.1 ? JumpPhase.RUNNING : JumpPhase.IDLE;
-        } else if (nextY <= floorH) {
+        if (nextY <= floorH) {
            nextY = floorH;
            state.verticalVelocity = 0;
            state.isGrounded = true;
            state.jumpPhase = state.speed > 0.1 ? JumpPhase.RUNNING : JumpPhase.IDLE;
+        } else if (nextY <= waterSurfaceY && floorH < waterSurfaceY && !isSwimmingNow) {
+           // We fell into the water, dampen vertical velocity but do not snap to water level
+           state.verticalVelocity *= 0.5;
         }
       } else if (state.isGrounded) {
-         // If walking off an edge:
-         if (nextY > floorH + 0.2) {
-             // We are falling!
+         // If walking off an edge or swimming upwards from the floor:
+         if (nextY > floorH + 0.1) {
+             // We are falling or swimming up!
              state.isGrounded = false;
-             state.verticalVelocity = -2;
-         } else if (floorH < waterLevel) {
-             nextY = waterLevel;
+             if (!isSwimmingNow) {
+                 state.verticalVelocity = -2;
+             }
          } else {
              nextY = floorH;
          }
@@ -1014,7 +1068,7 @@ export default function App() {
       state.position.y = nextY;
 
       // Check if we are swimming 
-      (state as any).isSwimming = state.position.y <= waterLevel && worldGrid.getGroundHeight(state.position.x, state.position.z) < waterLevel;
+      (state as any).isSwimming = state.position.y <= waterSurfaceY + 0.1 && worldGrid.getGroundHeight(state.position.x, state.position.z) < waterSurfaceY;
 
       // Update actual visual group coordinates inside scene
       playerRootGroup.position.copy(state.position);
@@ -1046,7 +1100,7 @@ export default function App() {
           
           // Snappy, incredibly responsive continuous orbital speeds
           cameraYaw -= ratioX * 2.8 * dt;
-          cameraPitch = Math.max(0.05, Math.min(1.4, cameraPitch + ratioY * 1.8 * dt));
+          cameraPitch = Math.max(-1.4, Math.min(1.4, cameraPitch + ratioY * 1.8 * dt));
         }
       }
 
@@ -1066,6 +1120,19 @@ export default function App() {
       // Lock our custom warm headlight directly to the camera center
       headLight.position.copy(camera.position);
 
+      // --- UNDERWATER CAMERA FILTER ---
+      if (state.position.y < waterSurfaceY - 0.2) {
+         // Deep aqua fog and background when submerged
+         (scene.fog as THREE.FogExp2).color.setHex(0x082b4a);
+         (scene.fog as THREE.FogExp2).density = 0.08;
+         (scene.background as THREE.Color).setHex(0x082b4a);
+      } else {
+         // Above water slate fog
+         (scene.fog as THREE.FogExp2).color.setHex(0x050508);
+         (scene.fog as THREE.FogExp2).density = 0.015;
+         (scene.background as THREE.Color).setHex(0x050508);
+      }
+
       // Apply screen shake effect on collision with stones
       if (cameraShake > 0.01) {
         camera.position.x += (Math.random() - 0.5) * cameraShake * 1.2;
@@ -1075,6 +1142,40 @@ export default function App() {
 
       // --- ANIMATE VISUAL MASCOT JOINT COMPOSITIONS ---
       animator.update(state, dt);
+
+      // --- RENDER REMOTE PLAYERS ---
+      const nowMs = performance.now();
+      const nearbyPeers = networkManager.getNearbyPeers(state.position, 150);
+      const nearbyPeerIds = new Set(nearbyPeers.map(p => p.id));
+
+      for (const peer of nearbyPeers) {
+        const peerId = peer.id;
+        let remAnim = remoteAnimators.get(peerId);
+        if (!remAnim) {
+           remAnim = new CharacterAnimator();
+           scene.add(remAnim.group);
+           remAnim.loadModelAndAnimations().catch(e => console.error(e));
+           remoteAnimators.set(peerId, remAnim);
+        }
+
+        // Interpolate visual positions smoothly
+        remAnim.group.position.lerp(peer.state.position, dt * 10);
+        
+        // Match rotation (shortcut for direction interpolation)
+        const targetQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), peer.state.direction || 0);
+        remAnim.group.quaternion.slerp(targetQ, dt * 15);
+        
+        // Step animation
+        remAnim.update(peer.state, dt);
+      }
+      
+      // Cleanup disconnected or distant peers
+      remoteAnimators.forEach((anim, peerId) => {
+        if (!nearbyPeerIds.has(peerId)) {
+          scene.remove(anim.group);
+          remoteAnimators.delete(peerId);
+        }
+      });
 
       // --- ROTATE COMPASS OVERLAY DIAL ---
       // The compass dial rotation copies camera viewport yaw precisely so that the red arrow always faces absolute North!
@@ -1108,6 +1209,11 @@ export default function App() {
         setPx(state.position.x);
         setPz(state.position.z);
         setJumpPhase(state.jumpPhase);
+
+        state.direction = playerRootGroup.rotation.y;
+
+        // Network Broadcast
+        networkManager.broadcastState(state);
 
         // Derive cardinal heading direction
         let deg = Math.round((viewHeading * 180) / Math.PI);
@@ -1161,6 +1267,7 @@ export default function App() {
     // Clean up memory allocations on component unmount
     return () => {
       cancelAnimationFrame(frameId);
+      networkManager.disconnect();
       window.removeEventListener('keydown', keyPressHandler);
       window.removeEventListener('keyup', keyReleaseHandler);
       window.removeEventListener('resize', layoutUI);
