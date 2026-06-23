@@ -25,8 +25,11 @@ export default {
       });
     }
 
-    if (request.method === 'GET' && (url.pathname === '/' || url.pathname === '')) {
-       return new Response('Xyrtania D1 Backend API is online.', { status: 200, headers: { "Access-Control-Allow-Origin": "*" } });
+    if (request.method === 'GET') {
+       return new Response('Xyrtania Cloudflare D1 Backend API is online! \n\nNote: This is the backend server. The 3D game UI runs on your frontend URL. \n\nPlayer state should be sent via POST to /api/sync.', { 
+         status: 200, 
+         headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "text/plain" } 
+       });
     }
 
     if (request.method === 'POST' && url.pathname === '/api/sync') {
