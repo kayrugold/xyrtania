@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Stride Hunter - Cinematic Engine</title>
+    <style>
+        :root {
+            --green: #39ff14;
+            --dim: #0f4007;
+            --red: #ff003c;
+            --bg: #020501;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+
+        body {
+            background-color: var(--bg); color: var(--green);
+            font-family: 'Courier New', Courier, monospace;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; overflow: hidden;
+        }
+
+        #matrix-layer { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; pointer-events: none; }
+        canvas { display: block; width: 100%; height: 100%; }
+
+        .crt-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none; z-index: 100;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 3px, 3px 100%;
+            box-shadow: inset 0 0 100px rgba(0,0,0,0.9);
+        }
+        .flicker {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none; z-index: 101; background: rgba(57, 255, 20, 0.02);
+            animation: crt-flicker 0.15s infinite;
+        }
+        @keyframes crt-flicker { 0% { opacity: 0.8; } 50% { opacity: 1; } 100% { opacity: 0.9; } }
+
+        .watermark {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            font-size: 35rem; font-weight: bold; color: rgba(255, 255, 255, 0.9);
+            text-shadow: 0 0 50px #fff, 0 0 100px var(--green);
+            z-index: 50; pointer-events: none; opacity: 0; transition: opacity 0.1s;
+        }
+
+        .terminal-container {
+            position: relative; z-index: 10; width: 96vw; max-width: 1200px; height: 75vh;
+            display: flex; flex-direction: column; gap: 10px; transition: all 0.1s;
+        }
+
+        .glass-panel {
+            background: rgba(2, 5, 1, 0.85); backdrop-filter: blur(5px);
+            border: 1px solid var(--dim); border-radius: 8px; padding: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.9);
+        }
+
+        .header { display: flex; justify-content: space-between; border-bottom: 2px dashed var(--green); padding-bottom: 5px; font-weight: bold; }
+
+        .layout-grid { display: flex; flex: 1; gap: 10px; overflow: hidden; }
+
+        /* --- CORE TERMINALS (Replacing Progress Bars) --- */
+        .core-grid { flex: 1.2; overflow-y: auto; padding-right: 5px; display: flex; flex-direction: column; gap: 8px;}
+        .core-row {
+            background: rgba(15, 64, 7, 0.2); border: 1px solid var(--dim);
+            padding: 8px; border-radius: 4px; display: flex; flex-direction: column;
+        }
+        .core-header { font-size: 0.75rem; font-weight: bold; color: #888; display: flex; justify-content: space-between; margin-bottom: 5px;}
+        .core-terminal { font-size: 0.75rem; color: var(--green); line-height: 1.3; font-family: monospace;}
+        .core-offline { opacity: 0.3; } .core-offline .core-terminal { color: #555; }
+
+        /* Log & Milestones */
+        .log-panel { flex: 1; display: flex; flex-direction: column; font-size: 0.85rem; }
+        .log-window { flex: 1; overflow-y: auto; line-height: 1.5; margin-bottom: 10px; padding-right: 5px; }
+        .log-hit { color: var(--red); font-weight: bold; text-shadow: 0 0 5px var(--red); font-size: 1.1rem; border-left: 4px solid var(--red); padding-left: 5px; margin: 10px 0;}
+        .log-quote { background: var(--green); color: #000; padding: 4px 8px; font-weight: bold; margin: 8px 0; font-size: 0.9rem;}
+        .log-sys { color: #888; }
+
+        .progress-master { height: 30px; border: 2px solid var(--green); position: relative; margin-top: auto; }
+        .progress-master-fill { height: 100%; background: var(--dim); width: 0%; transition: width 0.2s linear; }
+        .progress-labels { position: absolute; top:0; left:0; width: 100%; height: 100%; display: flex; justify-content: space-between; align-items: center; padding: 0 10px; font-weight: bold; color: rgba(255,255,255,0.7); pointer-events: none;}
+
+        /* --- CONTROL DECK --- */
+        .control-panel {
+            position: relative; z-index: 10; width: 96vw; max-width: 1200px;
+            background: #0a0a0a; padding: 15px; margin-top: 10px;
+            border-radius: 8px; border: 1px solid #333; display: flex; gap: 15px; align-items: center;
+        }
+        
+        .input-col { display: flex; flex-direction: column; gap: 5px; flex: 1; }
+        .input-label { font-size: 0.7rem; color: #888; font-weight: bold; text-align: center; }
+        input[type="text"], input[type="number"], select {
+            background: #111; border: 1px solid #444; color: var(--green);
+            font-family: 'Courier New', monospace; font-size: 1.1rem; font-weight: bold;
+            padding: 8px; border-radius: 4px; width: 100%; text-align: center;
+        }
+
+        /* --- RETRO ROTARY KNOBS --- */
+        .dials-wrapper { display: flex; gap: 20px; align-items: center; justify-content: center; flex: 1.5; border-left: 1px solid #333; border-right: 1px solid #333; padding: 0 15px;}
+        .knob-container { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+        .knob-body {
+            width: 45px; height: 45px; border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #555, #111);
+            border: 2px solid #000; box-shadow: 0 5px 10px rgba(0,0,0,0.8), inset 0 0 3px #000;
+            position: relative; cursor: grab; touch-action: none; transform: rotate(-135deg);
+        }
+        .knob-body:active { cursor: grabbing; }
+        .knob-notch { position: absolute; top: 2px; left: 50%; transform: translateX(-50%); width: 4px; height: 12px; background: var(--green); border-radius: 2px; box-shadow: 0 0 5px var(--green); }
+        .knob-val { font-size: 0.75rem; color: var(--green); font-weight: bold; }
+
+        .btn-toggle {
+            flex: 1.2; background: #111; border: 2px solid var(--green); color: var(--green);
+            font-family: 'Courier New', monospace; font-size: 1.5rem; font-weight: bold;
+            padding: 15px; border-radius: 4px; cursor: pointer; transition: all 0.2s; height: 100%;
+        }
+        .btn-toggle.abort-mode { border-color: var(--red); color: var(--red); box-shadow: 0 0 20px rgba(255,0,60,0.4); }
+        
+        .btn-help {
+            flex: 0.3; background: #222; border: 1px solid #555; color: #888;
+            font-family: 'Courier New', monospace; font-size: 1.2rem; font-weight: bold;
+            padding: 15px 0; border-radius: 4px; cursor: pointer; height: 100%;
+        }
+
+        .flash-red-bg { background-color: rgba(255, 0, 60, 0.3) !important; }
+        .glitch-anim { animation: severe-glitch 0.2s cubic-bezier(.25, .46, .45, .94) both 3; }
+        .apocalyptic-glitch { animation: severe-glitch 0.1s cubic-bezier(.25, .46, .45, .94) both 8; filter: invert(1) hue-rotate(180deg); }
+        
+        @keyframes severe-glitch {
+            0% { transform: translate(0) } 20% { transform: translate(-15px, 15px) }
+            40% { transform: translate(-15px, -15px) } 60% { transform: translate(15px, 15px) }
+            80% { transform: translate(15px, -15px) } 100% { transform: translate(0) }
+        }
+
+        /* --- HELP MODAL --- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.8); z-index: 1000; display: none;
+            justify-content: center; align-items: center; backdrop-filter: blur(5px);
+        }
+        .modal-content {
+            background: #0a0a0a; border: 2px solid var(--green); padding: 25px;
+            border-radius: 8px; max-width: 600px; width: 90%; color: #ccc;
+            font-size: 0.95rem; line-height: 1.6; box-shadow: 0 0 50px rgba(57, 255, 20, 0.2);
+        }
+        .modal-content h2 { color: var(--green); margin-bottom: 15px; border-bottom: 1px dashed var(--green); padding-bottom: 5px;}
+        .modal-content span.hl { color: #fff; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="crt-overlay"></div>
+    <div class="flicker"></div>
+    <div class="watermark" id="watermark"></div>
+
+    <div id="matrix-layer"><canvas id="matrixCanvas"></canvas></div>
+
+    <div class="terminal-container" id="terminal-container">
+        <div class="glass-panel" style="padding: 10px 15px;">
+            <div class="header">
+                <span id="target-display">TARGET: AWAITING INPUT</span>
+                <span id="status-display">STATUS: IDLE</span>
+            </div>
+        </div>
+
+        <div class="layout-grid">
+            <div class="glass-panel core-grid" id="core-grid">
+                <div style="color:#555; text-align:center; margin-top:20px;">[ CORES STANDBY ]</div>
+            </div>
+
+            <div class="glass-panel log-panel">
+                <div class="log-window" id="log-window">
+                    <div>> STRIDE HUNTER CINEMATIC ENGINE.</div>
+                    <div>> HARDWARE DETECTED: <span id="hw-cores-display">--</span> CORES.</div>
+                </div>
+                <div class="progress-master">
+                    <div class="progress-master-fill" id="prog-fill"></div>
+                    <div class="progress-labels">
+                        <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span>
+                        <span>6</span><span>7</span><span>8</span><span>9</span><span>10</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="control-panel">
+        <div class="input-col">
+            <span class="input-label">BASE</span>
+            <input type="text" id="inpBase" value="10">
+        </div>
+        <div class="input-col" style="flex: 1.5">
+            <span class="input-label">EXPONENT</span>
+            <input type="text" id="inpExp" value="1000000000">
+        </div>
+        <div class="input-col">
+            <span class="input-label">ADD</span>
+            <input type="text" id="inpAdd" value="19">
+        </div>
+        <div class="input-col">
+            <span class="input-label">CORES</span>
+            <select id="selCores"></select>
+        </div>
+        
+        <div class="dials-wrapper">
+            <div class="knob-container">
+                <span class="input-label">NOISE</span>
+                <div class="knob-body" id="knobNoise" style="transform: rotate(-50deg);"><div class="knob-notch"></div></div>
+                <div class="knob-val" id="valNoise">80%</div>
+            </div>
+            <div class="knob-container">
+                <span class="input-label">GLOW</span>
+                <div class="knob-body" id="knobGlow" style="transform: rotate(-100deg);"><div class="knob-notch"></div></div>
+                <div class="knob-val" id="valGlow">20%</div>
+            </div>
+            <div class="knob-container">
+                <span class="input-label">MODULUS</span>
+                <div class="knob-body" id="knobMod" style="transform: rotate(0deg);"><div class="knob-notch"></div></div>
+                <div class="knob-val" id="valMod">12</div>
+            </div>
+        </div>
+
+        <button class="btn-toggle" id="btnToggle">ENGAGE</button>
+        <button class="btn-help" id="btnHelp">?</button>
+    </div>
+
+    <div class="modal-overlay" id="helpModal">
+        <div class="modal-content">
+            <h2>SYS ADMIN MANUAL</h2>
+            <p><strong>STANDARD NUMBER TARGETING:</strong><br>
+            To scan a standard number (e.g. <span class="hl">1007</span>), bypass the exponent logic by setting:<br>
+            - Base: <span class="hl">10</span><br>
+            - Exponent: <span class="hl">0</span><br>
+            - Add: <span class="hl">1006</span><br>
+            <em>(Since 10^0 = 1. Therefore 1 + 1006 = 1007)</em></p>
+            <br>
+            <p><strong>HARDWARE DIALS:</strong><br>
+            Drag up/down on the dials to operate.<br>
+            - <span class="hl">NOISE / GLOW:</span> Adjusts CRT terminal aesthetics.<br>
+            - <span class="hl">MODULUS (Acoustic Sensor):</span> This dial spins infinitely. If the Target Number is perfectly divisible by the Modulus dial, the engine frequency will instantly resonate, brightening the background noise.</p>
+            <br>
+            <div style="text-align:right;">
+                <button onclick="document.getElementById('helpModal').style.display='none'" style="background:#222; color:#fff; border:1px solid #555; padding:5px 15px; cursor:pointer;">CLOSE</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+
+        // --- 1. HARDWARE DETECTION & UI SETUP ---
+        const hwCores = navigator.hardwareConcurrency || 8; 
+        document.getElementById('hw-cores-display').innerText = hwCores;
+        const selCores = document.getElementById('selCores');
+        const coreGrid = document.getElementById('core-grid');
+        
+        for(let i=1; i<=hwCores; i++) {
+            selCores.appendChild(new Option(i, i, false, i===hwCores));
+        }
+
+        document.getElementById('btnHelp').addEventListener('click', () => {
+            document.getElementById('helpModal').style.display = 'flex';
+        });
+
+        // --- 2. THE MODULAR RESONATOR (MATH) ---
+        let isResonating = false;
+        
+        function mainPowMod(b, e, m) {
+            let res = 1n; b = b % m;
+            while (e > 0n) {
+                if ((e & 1n) === 1n) res = (res * b) % m;
+                b = (b * b) % m; e = e >> 1n;
+            } return res;
+        }
+
+        function checkModulusResonance() {
+            try {
+                let bStr = document.getElementById('inpBase').value || "0";
+                let eStr = document.getElementById('inpExp').value || "0";
+                let aStr = document.getElementById('inpAdd').value || "0";
+                
+                let b = BigInt(bStr); let e = BigInt(eStr); let a = BigInt(aStr);
+                let m = BigInt(dialSettings.mod);
+                
+                if (m < 2n) { isResonating = false; return; }
+                
+                let addMod = a % m; if(addMod < 0n) addMod += m;
+                let val = (mainPowMod(b, e, m) + addMod) % m;
+                
+                if (val === 0n) { isResonating = true; } 
+                else { isResonating = false; }
+            } catch(err) {
+                isResonating = false;
+            }
+        }
+
+        document.getElementById('inpBase').addEventListener('input', checkModulusResonance);
+        document.getElementById('inpExp').addEventListener('input', checkModulusResonance);
+        document.getElementById('inpAdd').addEventListener('input', checkModulusResonance);
+
+        // --- 3. ROTARY KNOB LOGIC ---
+        let dialSettings = { noise: 0.8, glow: 0.2, mod: 12 };
+        
+        function setupBoundedKnob(knobId, valId, settingKey, minVal, maxVal) {
+            const knob = document.getElementById(knobId);
+            const valDisplay = document.getElementById(valId);
+            let isDragging = false, currentAngle = -135, lastY = 0;
+
+            let initPct = dialSettings[settingKey];
+            currentAngle = -135 + (initPct * 270);
+            knob.style.transform = `rotate(${currentAngle}deg)`;
+
+            function handleMove(e) {
+                if (!isDragging) return;
+                let clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                let deltaY = lastY - clientY; lastY = clientY;
+                
+                currentAngle += deltaY * 2;
+                if(currentAngle < -135) currentAngle = -135;
+                if(currentAngle > 135) currentAngle = 135;
+                
+                knob.style.transform = `rotate(${currentAngle}deg)`;
+                let pct = (currentAngle + 135) / 270;
+                dialSettings[settingKey] = pct;
+                valDisplay.innerText = Math.round(pct * 100) + "%";
+            }
+
+            knob.addEventListener('mousedown', (e) => { isDragging = true; lastY = e.clientY; });
+            document.addEventListener('mousemove', handleMove); document.addEventListener('mouseup', () => isDragging = false);
+            knob.addEventListener('touchstart', (e) => { isDragging = true; lastY = e.touches[0].clientY; }, {passive:false});
+            document.addEventListener('touchmove', (e) => { if(isDragging) { e.preventDefault(); handleMove(e); } }, {passive:false});
+            document.addEventListener('touchend', () => isDragging = false);
+        }
+
+        function setupInfiniteKnob(knobId, valId) {
+            const knob = document.getElementById(knobId);
+            const valDisplay = document.getElementById(valId);
+            let isDragging = false, currentAngle = 0, lastY = 0, currentMod = 12;
+
+            function handleMove(e) {
+                if (!isDragging) return;
+                let clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                let deltaY = lastY - clientY; lastY = clientY;
+                
+                currentAngle += deltaY * 3; knob.style.transform = `rotate(${currentAngle}deg)`;
+                currentMod += deltaY * 0.3; if(currentMod < 2) currentMod = 2;
+                
+                dialSettings.mod = Math.floor(currentMod);
+                valDisplay.innerText = dialSettings.mod;
+                checkModulusResonance(); 
+            }
+
+            knob.addEventListener('mousedown', (e) => { isDragging = true; lastY = e.clientY; });
+            document.addEventListener('mousemove', handleMove); document.addEventListener('mouseup', () => isDragging = false);
+            knob.addEventListener('touchstart', (e) => { isDragging = true; lastY = e.touches[0].clientY; }, {passive:false});
+            document.addEventListener('touchmove', (e) => { if(isDragging) { e.preventDefault(); handleMove(e); } }, {passive:false});
+            document.addEventListener('touchend', () => isDragging = false);
+        }
+
+        setupBoundedKnob('knobNoise', 'valNoise', 'noise', 0, 100);
+        setupBoundedKnob('knobGlow', 'valGlow', 'glow', 0, 100);
+        setupInfiniteKnob('knobMod', 'valMod');
+
+        // --- 4. OPTIMIZED MATRIX CANVAS ---
+        const canvas = document.getElementById('matrixCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        window.addEventListener('resize', resize); resize();
+
+        function drawMatrix() {
+            // Brighten background cleanly on resonance
+            if (isResonating) ctx.fillStyle = `rgba(15, 60, 20, ${1.0 - dialSettings.glow})`; 
+            else ctx.fillStyle = `rgba(2, 5, 1, ${1.0 - dialSettings.glow})`; 
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const cols = Math.floor(canvas.width / 40);
+            const rows = Math.floor(canvas.height / 20);
+            
+            ctx.textAlign = 'center';
+            ctx.font = 'bold 12px Courier New';
+
+            let effNoise = isResonating ? 0.6 : dialSettings.noise; 
+
+            for(let i=0; i < (cols*rows)*(effNoise + 0.1); i++) {
+                const c = Math.floor(Math.random() * cols);
+                const r = Math.floor(Math.random() * rows);
+                let s = Math.floor(Math.random() * 99);
+                let d = Math.floor(Math.random() * 99);
+                
+                if (isResonating) {
+                    ctx.fillStyle = Math.random() > 0.5 ? '#ffffff' : '#39ff14'; // Bright white/green pop
+                    ctx.fillText(`${s}.${d}`, c*40 + (Math.random()*4-2), r*20 + (Math.random()*4-2));
+                } else {
+                    if (Math.random() > dialSettings.noise) {
+                        ctx.fillStyle = `rgba(57, 255, 20, ${Math.random() * 0.5 + 0.1})`;
+                        ctx.fillText(`${s}.${d*d}`, c*40, r*20); 
+                    } else {
+                        ctx.fillStyle = `rgba(15, 64, 7, ${Math.random() * 0.8})`;
+                        ctx.fillText(`${s}.${d}`, (c*40) + (Math.random()*10 - 5), (r*20) + (Math.random()*4 - 2)); 
+                    }
+                }
+            }
+            requestAnimationFrame(drawMatrix);
+        }
+        drawMatrix();
+
+        // --- 5. THEATRICAL MILESTONES & CONSOLE LOG ---
+        const quotes = [
+            "1: GNOMON MATRIX INITIALIZED. SEARCH SPACE OPEN.",
+            "2: ALIGNING STRIDE OFFSET. NOISE NOMINAL.",
+            "3: PARABOLIC THRESHOLD CROSSED. STABILITY HOLDING.",
+            "4: ISOLATING THE DERIVATIVE. VELOCITY INCREASING.",
+            "5: HALF-WAY TO APEX. GRAVITY WELL DEEPENING.",
+            "6: MULTIPLES OF 8 DETECTED IN QUADRATIC GEARS.",
+            "7: TRANSITION ZONE ANOMALY. DRIFT COMPENSATING.",
+            "8: AXIS SWAP ENGAGED. FLATTENING CURVE.",
+            "9: CRITICAL DENSITY REACHED. ENGINE AT MAX YIELD.",
+            "10: EVENT HORIZON SECURED."
+        ];
+
+        const elLog = document.getElementById('log-window');
+        const elWatermark = document.getElementById('watermark');
+        const termContainer = document.getElementById('terminal-container');
+
+        function log(msg, type = "normal") {
+            const div = document.createElement('div');
+            div.innerHTML = msg;
+            if(type === "hit") div.className = "log-hit";
+            else if(type === "quote") div.className = "log-quote";
+            else if(type === "sys") div.className = "log-sys";
+            elLog.appendChild(div);
+            elLog.scrollTop = elLog.scrollHeight;
+        }
+
+        function triggerMilestone(num, isFinale = false) {
+            log(quotes[num-1], "quote");
+            elWatermark.innerText = num;
+            elWatermark.style.opacity = '1';
+            
+            if (isFinale) termContainer.classList.add('apocalyptic-glitch');
+            else termContainer.classList.add('glitch-anim');
+            
+            setTimeout(() => {
+                termContainer.classList.remove('glitch-anim', 'apocalyptic-glitch');
+                elWatermark.style.opacity = '0';
+            }, isFinale ? 800 : 600);
+        }
+
+        // --- 6. ENGINE LOGIC & THREAD TERMINALS ---
+        const workerCode = `
+            function powMod(b, e, m) {
+                let res = 1n; b = b % m;
+                while (e > 0n) {
+                    if ((e & 1n) === 1n) res = (res * b) % m;
+                    b = (b * b) % m; e = e >> 1n;
+                } return res;
+            }
+            self.onmessage = function(e) {
+                const { baseStr, expStr, addStr, startP, endP, coreId } = e.data;
+                const base = BigInt(baseStr); const exp = BigInt(expStr); const add = BigInt(addStr);
+                let p = BigInt(startP);
+                if (p % 2n === 0n && p > 2n) p += 1n; 
+                if (p === 2n) p = 3n;
+
+                const limit = BigInt(endP);
+                let lastReport = Date.now();
+                let opsCount = 0;
+
+                while (p < limit) {
+                    let addMod = add % p; if (addMod < 0n) addMod += p;
+                    if ((powMod(base, exp, p) + addMod) % p === 0n) {
+                        self.postMessage({ type: 'hit', factor: p.toString() });
+                    }
+                    p += 2n; opsCount++;
+                    
+                    if (Date.now() - lastReport > 100) {
+                        self.postMessage({ type: 'prog', p: p.toString(), ops: opsCount * 10, coreId });
+                        opsCount = 0;
+                        lastReport = Date.now();
+                    }
+                }
+                self.postMessage({ type: 'prog', p: limit.toString(), ops: opsCount * 10, coreId });
+                self.postMessage({ type: 'done', coreId });
+            };
+        `;
+        const workerBlob = new Blob([workerCode], { type: 'application/javascript' });
+        const workerUrl = URL.createObjectURL(workerBlob);
+
+        let workers = [];
+        let isRunning = false;
+        let isCinematicSpooling = false;
+        let cachedHits = [];
+        
+        let globalCurrentP = 3;
+        let globalMaxP = 0;
+        let globalStartP = 3;
+        let totalProcessed = 0; 
+        let nextMilestone = 1;
+        const CHUNK_SIZE = 50000;
+
+        const btnToggle = document.getElementById('btnToggle');
+        btnToggle.addEventListener('click', () => {
+            if (isRunning) abortScan();
+            else deployFleet();
+        });
+
+        function abortScan() {
+            isRunning = false; isCinematicSpooling = false;
+            workers.forEach(w => w.worker.terminate()); workers = [];
+            btnToggle.innerText = "ENGAGE"; btnToggle.classList.remove('abort-mode');
+            document.getElementById('status-display').innerText = "STATUS: ABORTED";
+            document.getElementById('status-display').style.color = "var(--red)";
+            log("> MANUAL OVERRIDE: FLEET TERMINATED.", "hit");
+            
+            for(let i=1; i<=hwCores; i++) {
+                const stat = document.getElementById(`core-stat-${i}`);
+                if(stat) {
+                    stat.innerText = "HALTED"; stat.style.color = "var(--red)";
+                    document.getElementById(`core-box-${i}`).classList.add('core-offline');
+                }
+            }
+        }
+
+        function deployFleet() {
+            isRunning = true; isCinematicSpooling = false; cachedHits = [];
+            elLog.innerHTML = ''; totalProcessed = 0;
+            btnToggle.innerText = "ABORT"; btnToggle.classList.add('abort-mode');
+            document.getElementById('status-display').innerText = "STATUS: HUNTING";
+            document.getElementById('status-display').style.color = "var(--green)";
+            
+            const base = document.getElementById('inpBase').value;
+            const exp = document.getElementById('inpExp').value;
+            const add = document.getElementById('inpAdd').value;
+            const activeCores = parseInt(document.getElementById('selCores').value);
+
+            document.getElementById('target-display').innerText = `TARGET: ${base}^${exp} + ${add}`;
+            
+            // INCREASED SEARCH SPACE: 500 Million to pace out milestones
+            globalStartP = 3; globalCurrentP = 3;
+            globalMaxP = 3 + 500000000; 
+            nextMilestone = 1; document.getElementById('prog-fill').style.width = '0%';
+            
+            log(`> DEPLOYING ${activeCores} CORES TO THE TRENCH...`);
+            
+            // Build Core Terminals Dynamically
+            coreGrid.innerHTML = '';
+            for(let i=1; i<=activeCores; i++) {
+                const div = document.createElement('div');
+                div.className = 'core-row';
+                div.id = `core-box-${i}`;
+                div.innerHTML = `
+                    <div class="core-header"><span>[ THREAD 0x0${i} ]</span><span id="core-stat-${i}" style="color:var(--green)">ACTIVE</span></div>
+                    <div class="core-terminal">
+                        <div>PTR:  <span id="core-ptr-${i}">0x00000000</span></div>
+                        <div>EVAL: p = <span id="core-val-${i}">--</span></div>
+                        <div>PERF: <span id="core-ops-${i}">0</span> OPS</div>
+                    </div>
+                `;
+                coreGrid.appendChild(div);
+            }
+
+            for (let i = 1; i <= activeCores; i++) {
+                const w = new Worker(workerUrl);
+                w.onmessage = handleWorkerMessage;
+                workers.push({ id: i, worker: w, base, exp, add });
+                dispatchChunk(i);
+            }
+        }
+
+        function dispatchChunk(coreId) {
+            if (!isRunning || isCinematicSpooling) return;
+            const start = globalCurrentP; const end = globalCurrentP + CHUNK_SIZE;
+            globalCurrentP = end;
+
+            const wObj = workers.find(w => w.id === coreId);
+            if(wObj) {
+                wObj.worker.postMessage({ baseStr: wObj.base, expStr: wObj.exp, addStr: wObj.add, startP: start.toString(), endP: end.toString(), coreId: coreId });
+            }
+        }
+
+        function triggerCinematicFinale() {
+            isCinematicSpooling = true;
+            workers.forEach(w => w.worker.terminate()); 
+            
+            let currentPct = parseFloat(document.getElementById('prog-fill').style.width) || 0;
+            let stepsRemaining = (10 - nextMilestone) + 1;
+            let distanceRemaining = 100 - currentPct;
+            let stepSize = distanceRemaining / stepsRemaining;
+
+            log(`[SYS] ANOMALY DETECTED. FORCING SEQUENCER OVERRIDE...`, "sys");
+
+            let cineInt = setInterval(() => {
+                if (!isRunning) { clearInterval(cineInt); return; }
+                
+                if (nextMilestone <= 10) {
+                    currentPct += stepSize;
+                    document.getElementById('prog-fill').style.width = `${currentPct}%`;
+                    triggerMilestone(nextMilestone, nextMilestone === 10);
+                    nextMilestone++;
+                } else {
+                    clearInterval(cineInt);
+                    setTimeout(() => {
+                        if (!isRunning) return;
+                        cachedHits.forEach(factor => { log(`>> FACTOR SECURED: ${factor}`, "hit"); });
+                        termContainer.classList.add('flash-red-bg');
+                        setTimeout(() => termContainer.classList.remove('flash-red-bg'), 800);
+                        checkShutdown();
+                    }, 1000);
+                }
+            }, 1000); // STRICT 1-SECOND PACING
+        }
+
+        function handleWorkerMessage(e) {
+            if (!isRunning) return;
+            
+            if (e.data.type === 'prog' && !isCinematicSpooling) {
+                const pVal = parseInt(e.data.p);
+                // Update terminal block
+                document.getElementById(`core-ptr-${e.data.coreId}`).innerText = "0x" + pVal.toString(16).toUpperCase().padStart(8, '0');
+                document.getElementById(`core-val-${e.data.coreId}`).innerText = pVal;
+                document.getElementById(`core-ops-${e.data.coreId}`).innerText = e.data.ops;
+            }
+            else if (e.data.type === 'hit') {
+                cachedHits.push(e.data.factor);
+                if (!isCinematicSpooling) {
+                    log(`> ANOMALY DETECTED. SPOOLING ENGINE...`);
+                    triggerCinematicFinale();
+                }
+            } 
+            else if (e.data.type === 'done' && !isCinematicSpooling) {
+                totalProcessed += CHUNK_SIZE;
+                const pct = (totalProcessed / (globalMaxP - globalStartP)) * 100;
+                document.getElementById('prog-fill').style.width = `${pct}%`;
+
+                if (pct >= nextMilestone * 10 && nextMilestone <= 10) {
+                    triggerMilestone(nextMilestone); 
+                    log(`[SYS] SECTOR ${nextMilestone}0% CLEARED.`, "sys");
+                    nextMilestone++;
+                }
+                dispatchChunk(e.data.coreId);
+            }
+        }
+
+        function checkShutdown() {
+            document.getElementById('status-display').innerText = "STATUS: COMPLETE";
+            btnToggle.innerText = "ENGAGE"; btnToggle.classList.remove('abort-mode');
+            workers = []; isRunning = false; isCinematicSpooling = false;
+        }
+    });
+    </script>
+</body>
+</html>

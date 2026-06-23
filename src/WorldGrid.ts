@@ -29,7 +29,7 @@ export class WorldGrid {
 
     // Initialize shared geometries
     this.sharedGeometries = {
-      ground: new THREE.PlaneGeometry(this.chunkSize, this.chunkSize),
+      ground: new THREE.PlaneGeometry(this.chunkSize, this.chunkSize, 10, 10),
       trunk: new THREE.CylinderGeometry(0.3, 0.45, 3, 6),
       foliageCones: [
         new THREE.ConeGeometry(1.8, 3.5, 5),
@@ -39,6 +39,20 @@ export class WorldGrid {
       grass: new THREE.ConeGeometry(0.12, 0.6, 3),
       rock: new THREE.DodecahedronGeometry(1, 0)
     };
+
+    // Global water plane for the lake
+    const waterGeo = new THREE.PlaneGeometry(100, 100);
+    const waterMat = new THREE.MeshStandardMaterial({
+      color: 0x3b82f6,
+      transparent: true,
+      opacity: 0.6,
+      roughness: 0.1,
+      metalness: 0.1
+    });
+    const waterPlane = new THREE.Mesh(waterGeo, waterMat);
+    waterPlane.rotation.x = -Math.PI / 2;
+    waterPlane.position.set(50, -0.5, 50); // Water level over the lake
+    this.scene.add(waterPlane);
 
     // Low-poly material set representing beautiful stylized environment
     this.sharedMaterials = {
@@ -93,8 +107,23 @@ export class WorldGrid {
     return Math.abs(val - Math.floor(val));
   }
 
+  private lakeRadius = 40;
+  
+  public getGroundHeight(x: number, z: number): number {
+     const dx = x - 50;
+     const dz = z - 50;
+     const distFromCenter = Math.sqrt(dx*dx + dz*dz);
+     if (distFromCenter < this.lakeRadius) {
+         // creating a deep lake off center
+         const depth = Math.cos((distFromCenter / this.lakeRadius) * (Math.PI / 2));
+         return -6 * depth;
+     }
+     return 0;
+  }
+
   // Clamps player position vector cleanly within 84,000 boundaries
   public clampPositionToBounds(pos: THREE.Vector3): void {
+
     if (pos.x < -this.halfMapBounds) pos.x = -this.halfMapBounds;
     if (pos.x > this.halfMapBounds) pos.x = this.halfMapBounds;
     if (pos.z < -this.halfMapBounds) pos.z = -this.halfMapBounds;
@@ -151,13 +180,29 @@ export class WorldGrid {
     const isEven = (cx + cz) % 2 === 0;
     const groundMaterial = isEven ? this.sharedMaterials.groundLight : this.sharedMaterials.groundDark;
 
-    // Create Ground Mesh
-    const groundMesh = new THREE.Mesh(this.sharedGeometries.ground, groundMaterial);
+    const chunkWorldX = cx * this.chunkSize;
+    const chunkWorldZ = cz * this.chunkSize;
+
+    // Create Ground Mesh (with vertex displacement for lakes)
+    const groundGeo = this.sharedGeometries.ground.clone();
+    const positions = groundGeo.attributes.position;
+    for (let j = 0; j < positions.count; j++) {
+       // Plane is placed at chunkWorldX, chunkWorldZ, but geometry is centered at 0,0 locally
+       const vx = positions.getX(j);
+       const vz = positions.getY(j); // Y in plane geo is Z in world after rotation
+       
+       const worldX = chunkWorldX + vx;
+       const worldZ = chunkWorldZ - vz; // Because plane rotation.x = -Math.PI / 2 flips the Y axis to Z
+       
+       const h = this.getGroundHeight(worldX, worldZ);
+       positions.setZ(j, h); // Z in plane geo is Y in world
+    }
+    groundGeo.computeVertexNormals();
+
+    const groundMesh = new THREE.Mesh(groundGeo, groundMaterial);
     groundMesh.rotation.x = -Math.PI / 2;
     groundMesh.receiveShadow = true;
     // Set position centered in the 40x40 boundaries
-    const chunkWorldX = cx * this.chunkSize;
-    const chunkWorldZ = cz * this.chunkSize;
     groundMesh.position.set(chunkWorldX, 0, chunkWorldZ);
     chunkGroup.add(groundMesh);
 
@@ -180,11 +225,14 @@ export class WorldGrid {
       if (Math.abs(spawnX) < 4 && Math.abs(spawnZ) < 4) {
         continue;
       }
+      
+      const groundH = this.getGroundHeight(spawnX, spawnZ);
 
       if (rollType < 0.45) {
         // --- SPAWN PROCEDURAL AUTUMN TREE ---
+        if (groundH < -1.0) continue; // no trees underwater
         const treeGroup = new THREE.Group();
-        treeGroup.position.set(spawnX, 0, spawnZ);
+        treeGroup.position.set(spawnX, groundH, spawnZ);
 
         // Trunk
         const trunkMesh = new THREE.Mesh(this.sharedGeometries.trunk, this.sharedMaterials.trunk);
@@ -218,6 +266,13 @@ export class WorldGrid {
         // Subtle random scaling
         const treeScale = 0.75 + this.seededRandom(baseSeed, i * 19) * 0.5;
         treeGroup.scale.set(treeScale, treeScale, treeScale);
+        
+        treeGroup.userData = {
+          isObstacle: true,
+          type: 'tree',
+          radius: 0.4 * treeScale,
+          height: 8.0 * treeScale
+        };
 
         chunkGroup.add(treeGroup);
         clutter.push(treeGroup);
@@ -226,8 +281,9 @@ export class WorldGrid {
         // --- SPAWN STYLIZED ROCK MOUNDS ---
         const rockSize = 0.6 + this.seededRandom(baseSeed, i * 22) * 1.4;
         const rockMesh = new THREE.Mesh(this.sharedGeometries.rock, this.sharedMaterials.rock);
-        rockMesh.position.set(spawnX, rockSize * 0.4, spawnZ);
-        rockMesh.scale.set(rockSize, rockSize * 0.9 + this.seededRandom(baseSeed, i * 5) * 0.5, rockSize);
+        rockMesh.position.set(spawnX, groundH + rockSize * 0.4, spawnZ);
+        const scaleY = rockSize * 0.9 + this.seededRandom(baseSeed, i * 5) * 0.5;
+        rockMesh.scale.set(rockSize, scaleY, rockSize);
         rockMesh.rotation.set(
           this.seededRandom(baseSeed, i * 3) * Math.PI,
           this.seededRandom(baseSeed, i * 9) * Math.PI,
@@ -235,14 +291,26 @@ export class WorldGrid {
         );
         rockMesh.castShadow = true;
         rockMesh.receiveShadow = true;
+        
+        rockMesh.userData = {
+          isObstacle: true,
+          type: 'rock',
+          radius: rockSize * 0.9,
+          height: scaleY * 0.95
+        };
 
         chunkGroup.add(rockMesh);
         clutter.push(rockMesh);
 
       } else {
         // --- SPAWN CLUSTERS OF GRASS CLUMPS ---
+        if (groundH < -0.5) continue; // no grass under deep water
         const grassGroup = new THREE.Group();
-        grassGroup.position.set(spawnX, 0.2, spawnZ);
+        grassGroup.position.set(spawnX, groundH + 0.2, spawnZ);
+        
+        grassGroup.userData = {
+          isObstacle: false
+        };
 
         const stemsCount = 3 + Math.floor(this.seededRandom(baseSeed, i * 12) * 4);
         for (let g = 0; g < stemsCount; g++) {

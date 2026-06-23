@@ -281,6 +281,19 @@ export function generateProceduralExplorerMesh(): THREE.Group {
   rightEye.position.set(0.16, 2.5, 0.34);
   upperBodyGroup.add(leftEye, rightEye);
 
+  // Procedural Eyelids (hidden by default)
+  const eyelidMat = new THREE.MeshBasicMaterial({ color: 0x221105, side: THREE.DoubleSide });
+  const eyelidGeo = new THREE.PlaneGeometry(0.14, 0.05);
+  const eyelids = new THREE.Group();
+  eyelids.name = 'proceduralEyelids';
+  const leftLid = new THREE.Mesh(eyelidGeo, eyelidMat);
+  leftLid.position.set(-0.16, 2.49, 0.40);
+  const rightLid = new THREE.Mesh(eyelidGeo, eyelidMat);
+  rightLid.position.set(0.16, 2.49, 0.40);
+  eyelids.add(leftLid, rightLid);
+  eyelids.visible = false;
+  upperBodyGroup.add(eyelids);
+
 
   // --- PATROL HAT ---
   const hatBrimGeom = new THREE.CylinderGeometry(1.25, 1.25, 0.035, 24);
@@ -321,6 +334,35 @@ export function updateMascotAnimation(
   dt: number,
   globalTime: number
 ): void {
+  // --- UNIVERSAL EYE BLINK LOGIC ---
+  if (state.blinkTimer === undefined) state.blinkTimer = 0;
+  state.blinkTimer += dt;
+  
+  // Blink every 3.5 seconds, lasts for 0.15s
+  const isBlinking = (state.blinkTimer % 3.5) < 0.15;
+  
+  let animatedMorphs = false;
+  character.traverse((c: any) => {
+     if (c.morphTargetDictionary && c.morphTargetInfluences) {
+         for (const key in c.morphTargetDictionary) {
+             const lowerKey = key.toLowerCase();
+             if (lowerKey.includes('blink') || lowerKey.includes('eye')) {
+                 const idx = c.morphTargetDictionary[key];
+                 c.morphTargetInfluences[idx] = isBlinking ? 1.0 : 0.0;
+                 animatedMorphs = true;
+             }
+         }
+     }
+  });
+  
+  if (!animatedMorphs) {
+      // Fallback procedural eyelids (created in loader or procedural generator)
+      const eyelids = character.getObjectByName('proceduralEyelids');
+      if (eyelids) {
+          eyelids.visible = isBlinking;
+      }
+  }
+
   const upperBody = character.getObjectByName('upperBodyGroup') as THREE.Group;
   const lowerBody = character.getObjectByName('lowerBodyGroup') as THREE.Group;
   if (!upperBody || !lowerBody) return;

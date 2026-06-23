@@ -1,10 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { WorldGrid } from './WorldGrid';
-import { generateProceduralExplorerMesh, updateMascotAnimation } from './MascotEngine';
 import { PlayerState, JumpPhase } from './types';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+import { CharacterAnimator } from './CharacterAnimator';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -12,8 +10,6 @@ export default function App() {
   const joystickKnobRef = useRef<HTMLDivElement | null>(null);
   const lookRef = useRef<HTMLDivElement | null>(null);
   const lookKnobRef = useRef<HTMLDivElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const loadModelRef = useRef<(file: File) => void>(() => {});
 
   // High-fidelity active React HUD states synced with the WebGL gameplay loop
   const [health, setHealth] = useState(100);
@@ -24,7 +20,6 @@ export default function App() {
   const [headingDegrees, setHeadingDegrees] = useState(0);
   const [fps, setFps] = useState(60);
   const [jumpPhase, setJumpPhase] = useState<JumpPhase>(JumpPhase.IDLE);
-  const [isRidingHorse, setIsRidingHorse] = useState(false);
   const [chunkCx, setChunkCx] = useState(0);
   const [chunkCz, setChunkCz] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -33,7 +28,6 @@ export default function App() {
 
   // References to invoke in-game actions from absolute HTML DOM target elements
   const triggerJumpRef = useRef<() => void>(() => {});
-  const toggleHorseRef = useRef<() => void>(() => {});
 
   // Fullscreen support state detection
   useEffect(() => {
@@ -161,78 +155,21 @@ export default function App() {
       direction: 0,
       speed: 0,
       health: 100,
-      isRidingHorse: false,
       jumpPhase: JumpPhase.IDLE,
       jumpProgress: 0,
       isGrounded: true,
       verticalVelocity: 0,
     };
 
-    // Shared Group containing both the Explorer character and the procedural Horse mount
+    // Shared Group containing both the Explorer character and the custom loaded mounts
     const playerRootGroup = new THREE.Group();
     playerRootGroup.position.set(0, 0, 0);
     scene.add(playerRootGroup);
 
-    // Explorer Character Mesh
-    const explorerMesh = generateProceduralExplorerMesh();
-    playerRootGroup.add(explorerMesh);
-
-    // Procedural Voxel Horse Mount Group
-    const horseMesh = generateProceduralHorseMesh();
-    playerRootGroup.add(horseMesh);
-    horseMesh.visible = false; // Hidden initially on foot
-    
-    // Wire up the loadModelRef to handle FBX/GLTF model uploads
-    loadModelRef.current = (file: File) => {
-      const url = URL.createObjectURL(file);
-      const extension = file.name.split('.').pop()?.toLowerCase();
-
-      const onModelLoaded = (object: THREE.Object3D) => {
-        // Find existing explorer and remove it
-        const oldExplorer = playerRootGroup.getObjectByName('explorer');
-        if (oldExplorer) {
-          playerRootGroup.remove(oldExplorer);
-        }
-        
-        object.name = 'explorer';
-        
-        // Auto scale to reasonable human size roughly (~2 units)
-        const box = new THREE.Box3().setFromObject(object);
-        const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        if (maxDim > 0) {
-          // Normal explorer is roughly 2.5 tall including hat
-          const scaleAmount = 2.5 / maxDim;
-          object.scale.setScalar(scaleAmount);
-        }
-        
-        // Re-calculate box after scale to adjust pivot to ground at Y=0
-        const boxScaled = new THREE.Box3().setFromObject(object);
-        const center = boxScaled.getCenter(new THREE.Vector3());
-        object.position.set(-center.x, -boxScaled.min.y, -center.z);
-        
-        // Wrap it in a parent so we don't mess up its internal translations when animating
-        const wrapper = new THREE.Group();
-        wrapper.name = 'explorer';
-        // Give wrapper same cast shadows config as original
-        object.traverse((child) => {
-          if ((child as THREE.Mesh).isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-          }
-        });
-        wrapper.add(object);
-        playerRootGroup.add(wrapper);
-      };
-
-      if (extension === 'fbx') {
-        const loader = new FBXLoader();
-        loader.load(url, onModelLoaded, undefined, (err) => console.error("FBX load error", err));
-      } else if (extension === 'glb' || extension === 'gltf') {
-        const loader = new GLTFLoader();
-        loader.load(url, (gltf) => onModelLoaded(gltf.scene), undefined, (err) => console.error("GLTF load error", err));
-      }
-    };
+    // Explorer Character Mesh (FBX + Animations)
+    const animator = new CharacterAnimator();
+    playerRootGroup.add(animator.group);
+    animator.loadModelAndAnimations().catch((err) => console.error(err));
 
     // --- 5. NATIVE 3D HUD COMPONENT GENERATION (HUD Scene) ---
     const hudElementsGroup = new THREE.Group();
@@ -368,46 +305,6 @@ export default function App() {
 
     hudElementsGroup.add(jumpButton);
 
-
-    // (D) MOBILE HORSE MOUNT 'H' TOGGLE BUTTON
-    const horseButton = new THREE.Group();
-    horseButton.name = 'btn_horse';
-
-    const hOuter = new THREE.Mesh(new THREE.RingGeometry(42, 48, 32), hudMaterials.gold);
-    hOuter.position.z = 1;
-    horseButton.add(hOuter);
-
-    const hInner = new THREE.Mesh(new THREE.CircleGeometry(38, 32), hudMaterials.darkGrey);
-    hInner.position.z = 0;
-    horseButton.add(hInner);
-
-    // Generous transparent touch hit target (Industry standard)
-    const horseHitArea = new THREE.Mesh(
-      new THREE.CircleGeometry(75, 16),
-      new THREE.MeshBasicMaterial({ depthTest: false, transparent: true, opacity: 0 })
-    );
-    horseHitArea.position.z = -1;
-    horseButton.add(horseHitArea);
-
-    // Draw the capital letter 'H' inside the horse mount toggle button using raw primitives
-    const letterGroup = new THREE.Group();
-    letterGroup.position.set(0, 0, 2);
-
-    const hLegL = new THREE.Mesh(new THREE.PlaneGeometry(6, 24), hudMaterials.gold);
-    hLegL.position.set(-9, 0, 0);
-    const hLegR = new THREE.Mesh(new THREE.PlaneGeometry(6, 24), hudMaterials.gold);
-    hLegR.position.set(9, 0, 0);
-    const hCross = new THREE.Mesh(new THREE.PlaneGeometry(14, 6), hudMaterials.gold);
-    hCross.position.set(0, 0, 0);
-
-    letterGroup.add(hLegL);
-    letterGroup.add(hLegR);
-    letterGroup.add(hCross);
-    horseButton.add(letterGroup);
-
-    hudElementsGroup.add(horseButton);
-
-
     // (E) TEXT GRAPHIC NOTICES IN WEBGL (Simple UI guide plates constructed out of meshes)
     const noticePlate = new THREE.Group();
     noticePlate.name = 'noticePlate';
@@ -494,7 +391,6 @@ export default function App() {
     // --- RE-ENABLE FULL RICH HUD PARTS FOR INTUITIVE USER CONTROLS ---
     healthContainer.visible = true;
     compassSystem.visible = false;
-    horseButton.visible = false;
     noticePlate.visible = true;
 
 
@@ -524,7 +420,6 @@ export default function App() {
       fullscreenButton.position.set(w / 2 - 35, h / 2 - 35, 0);
       fullscreenButton.scale.set(0.42, 0.42, 0.42);
       
-      horseButton.position.set(-w / 2 + 85, -h / 2 + 95, 0);
       noticePlate.position.set(0, -h / 2 + 30, 0);
     };
     window.addEventListener('resize', layoutUI);
@@ -534,19 +429,29 @@ export default function App() {
 
     // --- 7. INPUT & STEERING INTERACTORS ---
     let currentStamina = 100;
+    
+    let isTouchMode = false;
 
     const keys: { [key: string]: boolean } = {};
     const keyPressHandler = (e: KeyboardEvent) => {
+      isTouchMode = false; // keyboard input means we probably aren't relying purely on touch HUD
+      
       // Prevent scrolling when pressing Spacebar
       if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
       }
-      keys[e.key.toLowerCase()] = true;
-
-      // Mount/Dismount keyboard horse trigger ('h')
-      if (e.key.toLowerCase() === 'h') {
-        toggleHorseMount();
+      if (e.code === 'Numpad6' || e.key === 'Fullscreen') {
+        const docEl = document.documentElement;
+        if (!document.fullscreenElement) {
+          docEl.requestFullscreen().catch(() => {});
+        } else {
+          document.exitFullscreen().catch(() => {});
+        }
       }
+
+      const k = e.key.toLowerCase();
+      if (keys[k]) return; // Stop repeating keydown auto-repeat
+      keys[k] = true;
 
       // Space Trigger JUMP
       if (e.key === ' ' || e.code === 'Space') {
@@ -558,28 +463,6 @@ export default function App() {
     };
     window.addEventListener('keydown', keyPressHandler);
     window.addEventListener('keyup', keyReleaseHandler);
-
-    function toggleHorseMount() {
-      state.isRidingHorse = !state.isRidingHorse;
-      horseMesh.visible = state.isRidingHorse;
-
-      // Pulse the horse button on screen
-      horseButton.scale.set(0.72, 0.72, 0.72);
-
-      // Mutate explorer leg stances when sitting on saddle
-      const lowerLegs = explorerMesh.getObjectByName('lowerBodyGroup') as THREE.Group;
-      if (lowerLegs) {
-        if (state.isRidingHorse) {
-          lowerLegs.rotation.set(0.12, 0, 0); // clamp legs
-          lowerLegs.scale.set(1.4, 0.8, 1.4); // widen legs
-          explorerMesh.position.y = 0.58; // lift trunk above saddle
-        } else {
-          lowerLegs.rotation.set(0, 0, 0);
-          lowerLegs.scale.set(1, 1, 1);
-          explorerMesh.position.y = 0;
-        }
-      }
-    }
 
     function initiateJump() {
       // Allow jump if player is on the ground
@@ -594,7 +477,6 @@ export default function App() {
 
     // Connect refs to make these actions callable from the outer React DOM HUD
     triggerJumpRef.current = initiateJump;
-    toggleHorseRef.current = toggleHorseMount;
 
     // Split-screen touch/mouse active tracking states
     let moveActive = false;
@@ -637,11 +519,6 @@ export default function App() {
           }
           if (parent.name === 'btn_fullscreen') {
             toggleFullscreen();
-            buttonHit = true;
-            break;
-          }
-          if (parent.name === 'btn_horse') {
-            toggleHorseMount();
             buttonHit = true;
             break;
           }
@@ -756,16 +633,29 @@ export default function App() {
     const el = canvasRef.current;
     
     const onMouseDown = (e: MouseEvent) => {
-      handlePointerDown(e.clientX, e.clientY, null);
+      isTouchMode = false;
+      if (document.pointerLockElement !== el) {
+        el.requestPointerLock().catch(() => {});
+      }
     };
     const onMouseMove = (e: MouseEvent) => {
-      handlePointerMove(e.clientX, e.clientY, null);
+      isTouchMode = false;
+      if (document.pointerLockElement === el) {
+        cameraYaw -= e.movementX * 0.005;
+        cameraPitch = Math.max(0.05, Math.min(1.4, cameraPitch + e.movementY * 0.005));
+      } else if (e.buttons > 0) {
+        // Fallback for iframe where pointer lock might be blocked
+        cameraYaw -= e.movementX * 0.005;
+        cameraPitch = Math.max(0.05, Math.min(1.4, cameraPitch + e.movementY * 0.005));
+      }
     };
     const onWindowMouseUp = () => {
+      isTouchMode = false;
       handlePointerUp(null);
     };
 
     const onTouchStart = (e: TouchEvent) => {
+      isTouchMode = true;
       e.preventDefault(); // Stop mobile scrolling/pinch effects on WebGL frame canvas
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
@@ -802,25 +692,61 @@ export default function App() {
 
     // Telemetry and high-performance State tracking clocks
     let lastTime = performance.now();
+    let lastRenderTime = performance.now();
     let frames = 0;
     let lastFpsUpdate = 0;
     let lastStateUpdate = 0;
 
+    let frameId: number = 0;
+
+    let targetKeyboardX = 0;
+    let targetKeyboardZ = 0;
+    let smoothedKeyboardX = 0;
+    let smoothedKeyboardZ = 0;
+
     const gameLoop = () => {
-      const dt = Math.min(clock.getDelta(), 0.1); // Clamp dt to prevent massive jumps on page switch
+      frameId = requestAnimationFrame(gameLoop);
+
+      const currentTime = performance.now();
+      
+      const dt = Math.min(clock.getDelta(), 0.05); // Clamp dt to prevent massive jumps on page switch, max 50ms (20fps)
       const globalTime = clock.getElapsedTime();
+      
+      // Update HUD visibility based on current input mode
+      jumpButton.visible = isTouchMode;
+      fullscreenButton.visible = isTouchMode;
+
+      // Keyboard camera turning
+      if (keys['q']) cameraYaw += 3.5 * dt;
+      if (keys['e']) cameraYaw -= 3.5 * dt;
 
       // Gradual decay of HUD click scale pulses
       jumpButton.scale.lerp(new THREE.Vector3(1, 1, 1), dt * 10);
-      horseButton.scale.lerp(new THREE.Vector3(1, 1, 1), dt * 10);
 
       // --- MOVEMENT STEERING DECODER ---
       const moveVec = new THREE.Vector3(0, 0, 0);
 
-      if (keys['w'] || keys['arrowup']) moveVec.z = -1;
-      if (keys['s'] || keys['arrowdown']) moveVec.z = 1;
-      if (keys['a'] || keys['arrowleft']) moveVec.x = -1;
-      if (keys['d'] || keys['arrowright']) moveVec.x = 1;
+      targetKeyboardX = 0;
+      targetKeyboardZ = 0;
+      if (keys['w'] || keys['arrowup']) targetKeyboardZ -= 1;
+      if (keys['s'] || keys['arrowdown']) targetKeyboardZ += 1;
+      if (keys['a'] || keys['arrowleft']) targetKeyboardX -= 1;
+      if (keys['d'] || keys['arrowright']) targetKeyboardX += 1;
+
+      // Normalize target keyboard vectors to prevent diagonal speed boost
+      if (targetKeyboardX !== 0 && targetKeyboardZ !== 0) {
+        const len = Math.sqrt(targetKeyboardX * targetKeyboardX + targetKeyboardZ * targetKeyboardZ);
+        targetKeyboardX /= len;
+        targetKeyboardZ /= len;
+      }
+
+      // Smooth keyboard movement to create analog joystick feel
+      const kAccel = dt * 10.0;
+      smoothedKeyboardX += (targetKeyboardX - smoothedKeyboardX) * Math.min(1.0, kAccel);
+      smoothedKeyboardZ += (targetKeyboardZ - smoothedKeyboardZ) * Math.min(1.0, kAccel);
+
+      if (Math.abs(smoothedKeyboardX) > 0.01) moveVec.x = smoothedKeyboardX;
+      if (Math.abs(smoothedKeyboardZ) > 0.01) moveVec.z = smoothedKeyboardZ;
 
       // Steer via touch movement vector (Split Screen Joystick style)
       if (moveActive) {
@@ -852,15 +778,18 @@ export default function App() {
       // Convert local keyboard inputs into world spaces aligned relative to camera facing heading
       if (moveVec.lengthSq() > 0.01 && !moveActive) {
         moveVec.normalize();
-        // Camera yaw angles projection
-        const camYAngle = Math.atan2(
-          camera.position.x - state.position.x,
-          camera.position.z - state.position.z
-        );
-        // Rotate moveVec relative to camera viewpoint
-        const rotatedX = moveVec.x * Math.cos(camYAngle) - moveVec.z * Math.sin(camYAngle);
-        const rotatedZ = moveVec.x * Math.sin(camYAngle) + moveVec.z * Math.cos(camYAngle);
-        moveVec.set(rotatedX, 0, rotatedZ).normalize();
+        
+        const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        camForward.y = 0;
+        camForward.normalize();
+
+        const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+        camRight.y = 0;
+        camRight.normalize();
+
+        // moveVec.z is -1 for forward, moveVec.x is -1 for left
+        const alignedMoveVec = camForward.multiplyScalar(-moveVec.z).add(camRight.multiplyScalar(moveVec.x));
+        moveVec.copy(alignedMoveVec).normalize();
       }
 
       // Decides movement speed scale depending on analog touch joystick drag pull
@@ -872,9 +801,20 @@ export default function App() {
         speedScale = Math.min(1.0, dragDist / 45);
       }
 
-      // Decides movement speed factor depending on Mount state and analog deflection
-      const targetSpeed = (state.isRidingHorse ? 38 : 22) * speedScale;
-      const accelFactor = state.isRidingHorse ? 18 : 16;
+      // We want walk -> jog -> run, so we use a low acceleration factor when running
+      // so the player naturally transitions through the animation thresholds.
+      const isSwimmingNow = (state as any).isSwimming || false;
+      const baseSpeed = isSwimmingNow ? 6 : 18;
+      const targetSpeed = baseSpeed * speedScale;
+      // Start out slower, accelerate slowly
+      let accelFactor = isSwimmingNow ? 3 : 6.0; 
+      // Deceleration is faster
+      let decelFactor = isSwimmingNow ? 4 : 12.0;
+
+      if (!state.isGrounded) {
+         accelFactor = 1.0; // Less horizontal push correction in air
+         decelFactor = 0.1; // Very little air drag so they retain jump momentum
+      }
 
       if (moveVec.lengthSq() > 0.01) {
         // Lock player head orientation yaw
@@ -884,20 +824,21 @@ export default function App() {
         state.speed = state.velocity.length();
 
         // Animate legs run cycle
-        if (state.jumpPhase === JumpPhase.IDLE) {
+        if (state.jumpPhase === JumpPhase.IDLE || state.jumpPhase === JumpPhase.PUSHING) {
           state.jumpPhase = JumpPhase.RUNNING;
         }
       } else {
         // Slow down to a stop
-        state.velocity.lerp(new THREE.Vector3(0, 0, 0), dt * 10);
+        state.velocity.lerp(new THREE.Vector3(0, 0, 0), dt * decelFactor);
         state.speed = state.velocity.length();
         if (state.speed < 0.1) {
           state.speed = 0;
-          if (state.jumpPhase === JumpPhase.RUNNING) {
+          if (state.jumpPhase === JumpPhase.RUNNING || state.jumpPhase === JumpPhase.PUSHING) {
             state.jumpPhase = JumpPhase.IDLE;
           }
         }
       }
+
 
       // Align model rotation smoothly to the movement velocity axis
       if (state.speed > 0.1) {
@@ -905,82 +846,179 @@ export default function App() {
         let diff = playerDirectionAngle - playerRootGroup.rotation.y;
         while (diff < -Math.PI) diff += Math.PI * 2;
         while (diff > Math.PI) diff -= Math.PI * 2;
-        playerRootGroup.rotation.y += diff * dt * 14;
+        playerRootGroup.rotation.y += diff * dt * 25;
       }
 
-      // --- PHYSICAL JUMP STATE TICKER ---
+      const waterLevel = -0.5;
+
+      // 1. Calculate next horizontal and vertical
+      let nextY = state.position.y;
       if (state.jumpPhase === JumpPhase.PREP) {
         state.jumpProgress += dt;
         if (state.jumpProgress >= 0.05) {
-          // LAUNCH OFF GROUND
           state.jumpPhase = JumpPhase.LAUNCH;
-          state.verticalVelocity = state.isRidingHorse ? 16 : 13;
+          state.verticalVelocity = 15.5; // snappier, bolder jump
           state.isGrounded = false;
         }
       } else if (!state.isGrounded) {
-        const gravityConst = state.isRidingHorse ? 45 : 35;
-        state.verticalVelocity -= gravityConst * dt;
-        state.position.y += state.verticalVelocity * dt;
-
-        // Transition launch to apex once falling starts
-        if (state.verticalVelocity < 2 && state.jumpPhase === JumpPhase.LAUNCH) {
-          state.jumpPhase = JumpPhase.APEX;
-        }
-
-        // Detect touchdown impact
-        if (state.position.y <= 0) {
-          state.position.y = 0;
-          state.verticalVelocity = 0;
-          state.isGrounded = true;
-          state.jumpPhase = JumpPhase.IMPACT;
-        }
+        state.verticalVelocity -= 45 * dt; // slightly stronger gravity
+      } else {
+        state.verticalVelocity = 0;
       }
+      nextY += state.verticalVelocity * dt;
 
-      // Apply horizontal displacements to coordinate position
+      // Apply horizontal displacements
       state.position.addScaledVector(state.velocity, dt);
 
       // --- MAP BOUNDS CLAMPING (84,000 bounds) ---
       worldGrid.clampPositionToBounds(state.position);
 
-      // Update actual visual group coordinates inside scene
-      playerRootGroup.position.copy(state.position);
-
-      // Lantern light bobbing on explorer
-      lanternLight.position.set(state.position.x, state.position.y + 2, state.position.z);
-
       // --- CHUNK INITIALIZATION & GC PASS ---
+      // Make sure active chunks are up to date with new position
       worldGrid.update(state.position);
-
-      // --- COLLISION DETECTION SYSTEM ---
-      // Scrutinize surrounding objects in loaded chunks
       const activeChunks = worldGrid.getActiveChunks();
-      const playerRadiusSq = 1.35 * 1.35; // collision cylinder size
 
+      // --- HORIZONTAL COLLISION DETECTION ---
       for (const chunk of activeChunks.values()) {
         for (const object of chunk.clutterMeshes) {
-          // Distance checks
+          if (object.userData.isObstacle === false) continue; // Skip non-obstacles
+
+          const objRadius = object.userData.radius || 0.8;
+          let objHeight = object.userData.height || 2.0;
+          const combinedRadius = 0.5 + objRadius; // collision cylinder size
+          const combinedRadiusSq = combinedRadius * combinedRadius;
+
           const dx = state.position.x - object.position.x;
           const dz = state.position.z - object.position.z;
           const distanceSq = dx * dx + dz * dz;
 
-          // If inside collision capsule we trigger pushback bounce & damage
-          if (distanceSq < playerRadiusSq) {
+          if (distanceSq < combinedRadiusSq && distanceSq > 0.01) {
+            let objTop = object.position.y + objHeight;
+            if (object.userData.type === 'rock') {
+                 const dist = Math.sqrt(distanceSq);
+                 const dropOffRatio = Math.min(1.0, Math.pow(dist / combinedRadius, 1.5));
+                 objTop -= dropOffRatio * objHeight * 0.35;
+            }
+
+            // Check if player is clearly above the obstacle
+            // If they are falling onto it, nextY might be slightly below objTop
+            if (state.position.y >= objTop - 0.25 || nextY >= objTop - 0.5) {
+                // Let the player stand on it, do not push out horizontally
+                continue;
+            }
+
             const pushDir = new THREE.Vector3(dx, 0, dz).normalize();
-            
-            // Push player out of obstacle bounds
-            state.position.addScaledVector(pushDir, 0.45);
-            playerRootGroup.position.copy(state.position);
+            const currentDist = Math.sqrt(distanceSq);
+            const moveOutDist = combinedRadius - currentDist;
+            state.position.addScaledVector(pushDir, moveOutDist);
 
-            // Halt velocity
-            state.velocity.set(0, 0, 0);
-            state.speed = 0;
-
-            // Trigger damage & screen shake
-            state.health = Math.max(0, state.health - 6);
-            cameraShake = 0.5; // Start camera rumble shake
+            if (state.speed > 0.1) {
+              const movingDot = moveVec.dot(pushDir);
+              
+              if (movingDot < -0.6) {
+                if (state.isGrounded) {
+                  state.jumpPhase = JumpPhase.PUSHING;
+                  playerDirectionAngle = Math.atan2(-pushDir.x, -pushDir.z);
+                  
+                  // Slow down sliding against wall when pushing
+                  const tangent = new THREE.Vector3(-pushDir.z, 0, pushDir.x);
+                  const tangentDot = state.velocity.dot(tangent);
+                  state.position.addScaledVector(tangent, -tangentDot * dt * 0.95);
+                }
+                // Bonk! Stop forward momentum instantly when hitting wall head-on
+                state.velocity.set(0, 0, 0);
+                state.speed = 0;
+              } else {
+                // Glancing blow - keep tangential velocity, but cancel out any velocity pointing INTO the rock
+                const tangent = new THREE.Vector3(-pushDir.z, 0, pushDir.x);
+                // Ensure tangent points in the direction of velocity
+                if (state.velocity.dot(tangent) < 0) {
+                    tangent.negate();
+                }
+                const tangentSpeed = Math.abs(state.velocity.dot(tangent));
+                
+                // Allow a slight friction drag on glancing hits
+                state.velocity.copy(tangent).multiplyScalar(tangentSpeed * 0.8);
+                state.speed = state.velocity.length();
+              }
+            }
           }
         }
       }
+
+      // --- VERTICAL COLLISION DETECTION & FLOOR CALCULATION ---
+      let floorH = worldGrid.getGroundHeight(state.position.x, state.position.z);
+      for (const chunk of activeChunks.values()) {
+        for (const object of chunk.clutterMeshes) {
+          if (object.userData.isObstacle === false) continue;
+          
+          const objRadius = object.userData.radius || 0.8;
+          let objHeight = object.userData.height || 2.0;
+          
+          // Require the player to actually be *above* the obstacle to stand on it
+          // instead of just touching the 0.5 padded outer collision box
+          const standRadius = objRadius + 0.2; // tighter standing bounding box
+          const standRadiusSq = standRadius * standRadius;
+
+          const dx = state.position.x - object.position.x;
+          const dz = state.position.z - object.position.z;
+          const distSq = dx * dx + dz * dz;
+          if (distSq < standRadiusSq) {
+             let objTop = object.position.y + objHeight;
+             if (object.userData.type === 'rock') {
+                 const dist = Math.sqrt(distSq);
+                 const dropOffRatio = Math.min(1.0, Math.pow(dist / standRadius, 1.5));
+                 objTop -= dropOffRatio * objHeight * 0.35;
+             }
+             
+             // Check if we are above the object to step on it.
+             // Increased threshold so they don't 'snap' up wildly.
+             if (state.position.y >= objTop - 0.5) {
+                if (objTop > floorH) {
+                  floorH = objTop;
+                }
+             }
+          }
+        }
+      }
+
+      // Apply vertical changes
+      if (!state.isGrounded && state.jumpPhase !== JumpPhase.PREP) {
+        if (state.verticalVelocity < 2 && state.jumpPhase === JumpPhase.LAUNCH) {
+          state.jumpPhase = JumpPhase.APEX;
+        }
+
+        if (floorH < waterLevel && nextY <= waterLevel) {
+           nextY = waterLevel;
+           state.verticalVelocity = 0;
+           state.isGrounded = true;
+           state.jumpPhase = state.speed > 0.1 ? JumpPhase.RUNNING : JumpPhase.IDLE;
+        } else if (nextY <= floorH) {
+           nextY = floorH;
+           state.verticalVelocity = 0;
+           state.isGrounded = true;
+           state.jumpPhase = state.speed > 0.1 ? JumpPhase.RUNNING : JumpPhase.IDLE;
+        }
+      } else if (state.isGrounded) {
+         // If walking off an edge:
+         if (nextY > floorH + 0.2) {
+             // We are falling!
+             state.isGrounded = false;
+             state.verticalVelocity = -2;
+         } else if (floorH < waterLevel) {
+             nextY = waterLevel;
+         } else {
+             nextY = floorH;
+         }
+      }
+      state.position.y = nextY;
+
+      // Check if we are swimming 
+      (state as any).isSwimming = state.position.y <= waterLevel && worldGrid.getGroundHeight(state.position.x, state.position.z) < waterLevel;
+
+      // Update actual visual group coordinates inside scene
+      playerRootGroup.position.copy(state.position);
+      lanternLight.position.set(state.position.x, state.position.y + 2, state.position.z);
 
       // Gradual natural health auto-recovery on green grass plains (regenerate 3 health per second)
       if (state.health < 100) {
@@ -1036,35 +1074,7 @@ export default function App() {
       }
 
       // --- ANIMATE VISUAL MASCOT JOINT COMPOSITIONS ---
-      updateMascotAnimation(explorerMesh, state, dt, globalTime);
-
-      // Animate Horse limbs as well if riding
-      if (state.isRidingHorse && horseMesh.visible) {
-        const hBL = horseMesh.getObjectByName('legBL') as THREE.Mesh;
-        const hBR = horseMesh.getObjectByName('legBR') as THREE.Mesh;
-        const hFL = horseMesh.getObjectByName('legFL') as THREE.Mesh;
-        const hFR = horseMesh.getObjectByName('legFR') as THREE.Mesh;
-
-        if (hBL && hBR && hFL && hFR) {
-          if (state.speed > 0.1) {
-            const legSpeed = 16;
-            const swing = Math.sin(globalTime * legSpeed) * 0.45;
-            hBL.rotation.x = -swing;
-            hBR.rotation.x = swing;
-            hFL.rotation.x = swing;
-            hFR.rotation.x = -swing;
-            
-            // Trot body lift
-            horseMesh.position.y = Math.abs(Math.sin(globalTime * legSpeed)) * 0.1;
-          } else {
-            hBL.rotation.x = 0;
-            hBR.rotation.x = 0;
-            hFL.rotation.x = 0;
-            hFR.rotation.x = 0;
-            horseMesh.position.y = 0;
-          }
-        }
-      }
+      animator.update(state, dt);
 
       // --- ROTATE COMPASS OVERLAY DIAL ---
       // The compass dial rotation copies camera viewport yaw precisely so that the red arrow always faces absolute North!
@@ -1076,7 +1086,7 @@ export default function App() {
 
       // --- STAMINA NATURAL RECOVERY TICK ---
       if (state.isGrounded && state.jumpPhase !== JumpPhase.PREP) {
-        const staminaRegenSpeed = state.isRidingHorse ? 30 : 18; // mount helps recover faster!
+        const staminaRegenSpeed = 18;
         currentStamina = Math.min(100, currentStamina + staminaRegenSpeed * dt);
       }
 
@@ -1098,7 +1108,6 @@ export default function App() {
         setPx(state.position.x);
         setPz(state.position.z);
         setJumpPhase(state.jumpPhase);
-        setIsRidingHorse(state.isRidingHorse);
 
         // Derive cardinal heading direction
         let deg = Math.round((viewHeading * 180) / Math.PI);
@@ -1144,12 +1153,10 @@ export default function App() {
       // PASS 2: Render our canvas-primitives HUD overlays on top of the 3D main viewport
       renderer.clearDepth();
       renderer.render(hudScene, hudCamera);
-
-      requestAnimationFrame(gameLoop);
     };
 
     // Kickstart recursive request frames
-    let frameId = requestAnimationFrame(gameLoop);
+    frameId = requestAnimationFrame(gameLoop);
 
     // Clean up memory allocations on component unmount
     return () => {
@@ -1173,91 +1180,6 @@ export default function App() {
       Object.values(hudMaterials).forEach((m) => m.dispose());
     };
   }, []);
-
-  function generateProceduralHorseMesh(): THREE.Group {
-    const horse = new THREE.Group();
-    horse.name = 'horse';
-
-    const horseMaterial = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8, flatShading: true }); // Chestnut brown horse
-    const maneMaterial = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.8, flatShading: true });  // Dark mane
-    const legMaterial = new THREE.MeshStandardMaterial({ color: 0x5c2d13, roughness: 0.8, flatShading: true });   // Legs
-    const saddleMaterial = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7, flatShading: true }); // Saddle grey/black
-
-    // Torso/Body
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 1.1), horseMaterial);
-    body.position.y = 0.55;
-    body.castShadow = true;
-    body.receiveShadow = true;
-    horse.add(body);
-
-    // Saddle representation on body
-    const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.59, 0.2, 0.45), saddleMaterial);
-    saddle.position.set(0, 0.65, -0.05);
-    saddle.castShadow = true;
-    horse.add(saddle);
-
-    // Neck
-    const neck = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.55, 0.32), horseMaterial);
-    neck.position.set(0, 0.95, 0.4);
-    neck.rotation.x = -0.4;
-    neck.castShadow = true;
-    horse.add(neck);
-
-    // Head
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.28, 0.5), horseMaterial);
-    head.position.set(0, 1.15, 0.52);
-    head.rotation.x = 0.2;
-    head.castShadow = true;
-    horse.add(head);
-
-    // Ears
-    const leftEar = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.16, 0.06), horseMaterial);
-    leftEar.position.set(-0.08, 1.32, 0.45);
-    leftEar.rotation.x = -0.2;
-    const rightEar = leftEar.clone();
-    rightEar.position.x = 0.08;
-    horse.add(leftEar);
-    horse.add(rightEar);
-
-    // Mane
-    const mane = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.45, 0.45), maneMaterial);
-    mane.position.set(0, 1.05, 0.22);
-    mane.rotation.x = -0.4;
-    horse.add(mane);
-
-    // 4 legs
-    const legGeom = new THREE.BoxGeometry(0.14, 0.45, 0.14);
-    
-    // Back Left
-    const legBL = new THREE.Mesh(legGeom, legMaterial);
-    legBL.name = 'legBL';
-    legBL.position.set(-0.2, 0.22, -0.38);
-    legBL.castShadow = true;
-    horse.add(legBL);
-
-    // Back Right
-    const legBR = new THREE.Mesh(legGeom, legMaterial);
-    legBR.name = 'legBR';
-    legBR.position.set(0.2, 0.22, -0.38);
-    legBR.castShadow = true;
-    horse.add(legBR);
-
-    // Front Left
-    const legFL = new THREE.Mesh(legGeom, legMaterial);
-    legFL.name = 'legFL';
-    legFL.position.set(-0.2, 0.22, 0.38);
-    legFL.castShadow = true;
-    horse.add(legFL);
-
-    // Front Right
-    const legFR = new THREE.Mesh(legGeom, legMaterial);
-    legFR.name = 'legFR';
-    legFR.position.set(0.2, 0.22, 0.38);
-    legFR.castShadow = true;
-    horse.add(legFR);
-
-    return horse;
-  }
 
   return (
     <div className={isFakeFullscreen ? "fixed inset-0 z-[99999] w-full h-[100dvh] bg-[#050508] text-slate-300 font-sans overflow-hidden" : "w-screen h-[100dvh] bg-[#050508] text-slate-300 font-sans relative overflow-hidden"}>
@@ -1295,26 +1217,6 @@ export default function App() {
         >
           <div className="w-3" style={{ borderTop: '2px solid rgba(255, 255, 255, 0.45)' }}></div>
         </div>
-      </div>
-
-      {/* Load 3D Model HUD Element */}
-      <div className="absolute top-4 left-4 z-50 pointer-events-auto">
-        <input 
-          type="file" 
-          ref={fileInputRef} 
-          className="hidden" 
-          accept=".fbx,.glb,.gltf" 
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) loadModelRef.current(file);
-          }} 
-        />
-        <button 
-          onClick={() => fileInputRef.current?.click()}
-          className="bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-slate-300 px-4 py-2 rounded-lg backdrop-blur-md font-mono text-xs tracking-wider transition-colors shadow-lg flex items-center gap-2"
-        >
-          <span className="text-amber-400">⌘</span> LOAD CUSTOM MESH (.FBX/.GLTF)
-        </button>
       </div>
 
       {/* Main Viewport Content - WebGL Canvas inside the underlaid layout */}

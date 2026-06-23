@@ -7,6 +7,7 @@ export enum JumpPhase {
   LAUNCH = 'LAUNCH', // In air, ascending, forward pitch lean, vertical stretch
   APEX = 'APEX', // Turning downward, smooth scale return
   IMPACT = 'IMPACT', // Touchdown squash (exactly 4 frames)
+  PUSHING = 'PUSHING', // Pushing heavy object
 }
 
 export interface PlayerState {
@@ -15,11 +16,12 @@ export interface PlayerState {
   direction: number; // yaw angle in radians
   speed: number;
   health: number; // 0 to 100
-  isRidingHorse: boolean;
   jumpPhase: JumpPhase;
   jumpProgress: number; // animation timer/phase progress
   isGrounded: boolean;
   verticalVelocity: number;
+  blinkTimer?: number;
+  isRidingHorse?: boolean;
 }
 
 export interface Chunk {
