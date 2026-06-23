@@ -16,6 +16,8 @@ export class NetworkManager {
   
   public onPeerJoin?: (id: string) => void;
   public onPeerLeave?: (id: string) => void;
+  
+  private lastKnownState?: PlayerState;
 
   constructor(appId: string, roomName: string) {
     const config = {
@@ -53,6 +55,11 @@ export class NetworkManager {
         lastUpdate: performance.now()
       });
       if (this.onPeerJoin) this.onPeerJoin(peerId);
+      
+      // If we have an active state to share, we should immediately broadcast to the new peer
+      if (this.lastKnownState) {
+          this.broadcastState(this.lastKnownState);
+      }
     };
     
     this.room.onPeerLeave = (peerId) => {
@@ -67,6 +74,7 @@ export class NetworkManager {
        const peerId = context.peerId;
        const peer = this.peers.get(peerId);
        if (peer) {
+          peer.state.displayName = data.displayName;
           peer.state.position.set(data.position.x, data.position.y, data.position.z);
           peer.state.velocity.set(data.velocity.x, data.velocity.y, data.velocity.z);
           peer.state.isGrounded = data.isGrounded;
@@ -83,8 +91,10 @@ export class NetworkManager {
   }
   
   public broadcastState(state: PlayerState) {
+    this.lastKnownState = state;
     // Only broadcast basic scalar/string/array properties to avoid serialization issues
     const syncState = {
+       displayName: state.displayName,
        position: { x: state.position.x, y: state.position.y, z: state.position.z },
        velocity: { x: state.velocity.x, y: state.velocity.y, z: state.velocity.z },
        isGrounded: state.isGrounded,

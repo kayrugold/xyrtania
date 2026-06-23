@@ -4,6 +4,7 @@ import { WorldGrid } from './WorldGrid';
 import { PlayerState, JumpPhase } from './types';
 import { CharacterAnimator } from './CharacterAnimator';
 import { NetworkManager } from './NetworkManager';
+import { AccountUI } from './components/AccountUI';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1167,6 +1168,11 @@ export default function App() {
         
         // Step animation
         remAnim.update(peer.state, dt);
+        
+        // Update Player Nametag
+        if (peer.state.displayName) {
+           remAnim.updateNametag(peer.state.displayName);
+        }
       }
       
       // Cleanup disconnected or distant peers
@@ -1213,6 +1219,7 @@ export default function App() {
         state.direction = playerRootGroup.rotation.y;
 
         // Network Broadcast
+        state.displayName = localStorage.getItem('xyrtania_display_name') || 'Anonymous';
         networkManager.broadcastState(state);
 
         // Derive cardinal heading direction
@@ -1290,6 +1297,8 @@ export default function App() {
 
   return (
     <div className={isFakeFullscreen ? "fixed inset-0 z-[99999] w-full h-[100dvh] bg-[#050508] text-slate-300 font-sans overflow-hidden" : "w-screen h-[100dvh] bg-[#050508] text-slate-300 font-sans relative overflow-hidden"}>
+      {/* PWA Cryptographic Identity */}
+      <AccountUI />
       {/* Cinematic Background Grid Underlay */}
       <div className="absolute inset-0 opacity-40 pointer-events-none z-0">
         <div className="absolute top-0 left-0 w-full h-full" style={{ backgroundImage: 'radial-gradient(circle at 50% 50%, #1a1a2e 0%, #050508 100%)' }}></div>

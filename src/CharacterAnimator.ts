@@ -11,6 +11,8 @@ export class CharacterAnimator {
   private modelLoaded = false;
   
   private basePrefix = '';
+  private currentNametag = '';
+  private nametagSprite: THREE.Sprite | null = null;
   
   constructor() {
     this.group = new THREE.Group();
@@ -141,6 +143,50 @@ export class CharacterAnimator {
     nextAction.play();
     
     this.activeAction = nextAction;
+  }
+
+  public updateNametag(name: string) {
+    if (!name || name === this.currentNametag) return;
+    this.currentNametag = name;
+
+    if (!this.nametagSprite) {
+        this.nametagSprite = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false }));
+        // Put text above head, scale should map to canvas aspect ratio
+        this.nametagSprite.position.set(0, 2.6, 0); 
+        this.nametagSprite.scale.set(1.5, 0.4, 1);
+        this.group.add(this.nametagSprite);
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Background pill shape
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+    ctx.beginPath();
+    ctx.roundRect(0, 0, 512, 128, 64);
+    ctx.fill();
+
+    // Text Name
+    ctx.font = 'bold 54px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#10b981'; // Emerald standard PWA theme
+    ctx.fillText(name, 256, 64);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    // Needs minFilter linear to prevent mipmap glitches for UI text
+    texture.minFilter = THREE.LinearFilter;
+    
+    // Cleanup old texture to prevent memory leak
+    if (this.nametagSprite.material.map) {
+      this.nametagSprite.material.map.dispose();
+    }
+    
+    this.nametagSprite.material.map = texture;
+    this.nametagSprite.material.needsUpdate = true;
   }
 
   public update(state: PlayerState, dt: number) {

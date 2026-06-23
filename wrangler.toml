@@ -1,0 +1,6 @@
+pages_build_output_dir = "./dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "xyrtania-db"
+database_id = "67857f77-3294-486d-bc3a-569913a9822a"
