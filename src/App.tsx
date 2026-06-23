@@ -1146,7 +1146,7 @@ export default function App() {
 
       // --- RENDER REMOTE PLAYERS ---
       const nowMs = performance.now();
-      const nearbyPeers = networkManager.getNearbyPeers(state.position, 150);
+      const nearbyPeers = networkManager.getNearbyPeers(state.position, 500);
       const nearbyPeerIds = new Set(nearbyPeers.map(p => p.id));
 
       for (const peer of nearbyPeers) {

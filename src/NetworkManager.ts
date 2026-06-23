@@ -73,7 +73,7 @@ export class NetworkManager {
     this.stateAction.onMessage = (data, context) => {
        const peerId = context.peerId;
        const peer = this.peers.get(peerId);
-       if (peer) {
+       if (peer && data && data.position) {
           peer.state.displayName = data.displayName;
           peer.state.position.set(data.position.x, data.position.y, data.position.z);
           peer.state.velocity.set(data.velocity.x, data.velocity.y, data.velocity.z);

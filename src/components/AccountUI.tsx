@@ -79,13 +79,21 @@ export const AccountUI: React.FC = () => {
 
       {/* Toggle Button for Returning Players */}
       {isSetupComplete && !isPanelOpen && (
-        <button 
-          onClick={() => setIsPanelOpen(true)}
-          className="bg-black/80 hover:bg-black p-2 rounded-full border border-gray-700 text-gray-400 hover:text-white transition-colors shadow-lg backdrop-blur-md"
-          title="Account Settings"
-        >
-          <Settings size={20} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setIsPanelOpen(true)}
+            className="bg-black/80 hover:bg-black p-2 rounded-full border border-gray-700 text-gray-400 hover:text-white transition-colors shadow-lg backdrop-blur-md"
+            title="Account Settings"
+          >
+            <Settings size={20} />
+          </button>
+          
+          {/* Debug / Status Indicator for Peers */}
+          <div className="bg-black/60 px-3 py-1 rounded-full text-xs font-mono border border-emerald-900/50 backdrop-blur-sm text-emerald-400 flex items-center gap-1.5" title="Connected Peers">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+            Online
+          </div>
+        </div>
       )}
 
       {isPanelOpen && (
