@@ -1,6 +1,6 @@
 {
   "name": "3D Explorer World",
   "description": "An infinite chunk-pooling 3D adventure game with procedural world generation and athletic model jumping.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["gamepad"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

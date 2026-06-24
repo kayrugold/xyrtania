@@ -23,6 +23,8 @@ export interface PlayerState {
   verticalVelocity: number;
   blinkTimer?: number;
   isRidingHorse?: boolean;
+  isSwimming?: boolean;
+  wetness?: number;
 }
 
 export interface Chunk {

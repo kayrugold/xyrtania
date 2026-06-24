@@ -27,6 +27,7 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showHud, setShowHud] = useState(true);
   const [isFakeFullscreen, setIsFakeFullscreen] = useState(false);
+  const [gamepadName, setGamepadName] = useState<string | null>(null);
 
   // References to invoke in-game actions from absolute HTML DOM target elements
   const triggerJumpRef = useRef<() => void>(() => {});
@@ -36,15 +37,28 @@ export default function App() {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
     };
+    
+    const handleGamepadConnected = (e: GamepadEvent) => {
+      setGamepadName(e.gamepad.id);
+    };
+    
+    const handleGamepadDisconnected = (e: GamepadEvent) => {
+      setGamepadName(null);
+    };
+
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.addEventListener('mozfullscreenchange', handleFullscreenChange);
     document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+    window.addEventListener('gamepadconnected', handleGamepadConnected);
+    window.addEventListener('gamepaddisconnected', handleGamepadDisconnected);
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
       document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
       document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+      window.removeEventListener('gamepadconnected', handleGamepadConnected);
+      window.removeEventListener('gamepaddisconnected', handleGamepadDisconnected);
     };
   }, []);
 
@@ -146,6 +160,20 @@ export default function App() {
     // Warm high-intensity camera headlight to make the player pop and look perfectly illuminated
     const headLight = new THREE.PointLight(0xfff7e6, 3.2, 30, 0.45);
     scene.add(headLight);
+
+    // Water Ripple Pool for Treading Water
+    const maxRipples = 6;
+    const rippleGeo = new THREE.RingGeometry(0.5, 0.65, 16);
+    const rippleMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
+    const ripples: THREE.Mesh[] = [];
+    for (let i = 0; i < maxRipples; i++) {
+        const r = new THREE.Mesh(rippleGeo, rippleMat.clone());
+        r.rotation.x = -Math.PI / 2;
+        r.visible = false;
+        r.userData = { age: 999 };
+        scene.add(r);
+        ripples.push(r);
+    }
 
     // --- 4. ENGINE INITIALIZATION ---
     const worldGrid = new WorldGrid(scene);
@@ -487,6 +515,8 @@ export default function App() {
     // Split-screen touch/mouse active tracking states
     let moveActive = false;
     let moveTouchId: number | null = null;
+    let jumpActive = false;
+    let jumpTouchId: number | null = null;
     let moveStartX = 0;
     let moveStartY = 0;
     let moveCurrentX = 0;
@@ -502,7 +532,7 @@ export default function App() {
     // Camera orbit parameters (starts behind player looking forward)
     let cameraYaw = 0;
     let cameraPitch = 0.55;
-    const cameraDistance = 8.5;
+    const baseCameraDistance = 5.5;
 
     const handlePointerDown = (clientX: number, clientY: number, touchId: number | null) => {
       // 1. Raycast into flat Hud Scene to verify circular buttons hits
@@ -520,6 +550,8 @@ export default function App() {
         while (parent && parent !== hudScene) {
           if (parent.name === 'btn_jump') {
             initiateJump();
+            jumpActive = true;
+            jumpTouchId = touchId;
             buttonHit = true;
             break;
           }
@@ -611,6 +643,8 @@ export default function App() {
         moveTouchId = null;
         camActive = false;
         camTouchId = null;
+        jumpActive = false;
+        jumpTouchId = null;
         if (joystickRef.current) {
           joystickRef.current.style.display = 'none';
         }
@@ -632,6 +666,10 @@ export default function App() {
             lookRef.current.style.display = 'none';
           }
         }
+        if (jumpActive && jumpTouchId === touchId) {
+          jumpActive = false;
+          jumpTouchId = null;
+        }
       }
     };
 
@@ -647,11 +685,11 @@ export default function App() {
     const onMouseMove = (e: MouseEvent) => {
       isTouchMode = false;
       if (document.pointerLockElement === el) {
-        cameraYaw -= e.movementX * 0.005;
+        cameraYaw -= e.movementX * 0.012;
         cameraPitch = Math.max(-1.4, Math.min(1.4, cameraPitch + e.movementY * 0.005));
       } else if (e.buttons > 0) {
         // Fallback for iframe where pointer lock might be blocked
-        cameraYaw -= e.movementX * 0.005;
+        cameraYaw -= e.movementX * 0.012;
         cameraPitch = Math.max(-1.4, Math.min(1.4, cameraPitch + e.movementY * 0.005));
       }
     };
@@ -689,7 +727,7 @@ export default function App() {
     el.addEventListener('touchstart', onTouchStart, { passive: false });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
     el.addEventListener('touchend', onTouchEnd, { passive: false });
-
+    el.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
     // --- 8. THE MAIN GAMEPLAY SIMULATION LOOP ---
     const clock = new THREE.Clock();
@@ -709,6 +747,7 @@ export default function App() {
     let targetKeyboardZ = 0;
     let smoothedKeyboardX = 0;
     let smoothedKeyboardZ = 0;
+    let prevGamepadJump = false;
 
     const gameLoop = () => {
       frameId = requestAnimationFrame(gameLoop);
@@ -739,11 +778,82 @@ export default function App() {
       if (keys['a'] || keys['arrowleft']) targetKeyboardX -= 1;
       if (keys['d'] || keys['arrowright']) targetKeyboardX += 1;
 
+      let gamepadJump = false;
+
+      // --- GAMEPAD SUPPORT ---
+      const gamepads = navigator.getGamepads ? Array.from(navigator.getGamepads()) : [];
+      let gamepadActive = false;
+      for (const gp of gamepads) {
+        if (!gp) continue;
+        
+        // D-Pad (usually buttons 12-15)
+        const dpadUp = gp.buttons[12]?.pressed;
+        const dpadDown = gp.buttons[13]?.pressed;
+        const dpadLeft = gp.buttons[14]?.pressed;
+        const dpadRight = gp.buttons[15]?.pressed;
+
+        let gpDx = 0;
+        let gpDz = 0;
+
+        if (dpadUp) gpDz -= 1;
+        if (dpadDown) gpDz += 1;
+        if (dpadLeft) gpDx -= 1;
+        if (dpadRight) gpDx += 1;
+
+        // Left stick for movement (axes 0 and 1) - overrides D-Pad if used
+        if (gp.axes.length >= 2) {
+            const stickX = Math.abs(gp.axes[0]) > 0.15 ? gp.axes[0] : 0;
+            const stickY = Math.abs(gp.axes[1]) > 0.15 ? gp.axes[1] : 0;
+            if (stickX !== 0 || stickY !== 0) {
+                gpDx = stickX;
+                gpDz = stickY;
+            }
+        }
+        
+        if (gpDx !== 0 || gpDz !== 0) {
+            targetKeyboardX = gpDx;
+            targetKeyboardZ = gpDz;
+            gamepadActive = true;
+        }
+        
+        // Right stick for camera look (axes 2 and 3)
+        if (gp.axes.length >= 4) {
+            const gpCx = Math.abs(gp.axes[2]) > 0.15 ? gp.axes[2] : 0;
+            const gpCy = Math.abs(gp.axes[3]) > 0.15 ? gp.axes[3] : 0;
+            
+            if (gpCx !== 0) cameraYaw -= gpCx * 3.0 * dt;
+            if (gpCy !== 0) cameraPitch = Math.max(-1.4, Math.min(1.4, cameraPitch + gpCy * 2.0 * dt));
+        }
+
+        // A button (index 0 usually) or Cross button for jump
+        if (gp.buttons[0] && gp.buttons[0].pressed) {
+            gamepadJump = true;
+        }
+
+        const debugEl = document.getElementById('gamepad-debug');
+        if (debugEl && (gpDx !== 0 || gpDz !== 0 || gp.axes[2] !== 0 || gp.axes[3] !== 0 || gamepadJump)) {
+            debugEl.innerText = `${gp.id.substring(0, 15)}...\nL(${gp.axes[0]?.toFixed(2)}, ${gp.axes[1]?.toFixed(2)}) R(${gp.axes[2]?.toFixed(2)}, ${gp.axes[3]?.toFixed(2)})\nBtns: ${gp.buttons.map((b, i) => b.pressed ? i : -1).filter(i => i >= 0).join(',')}`;
+        }
+      }
+
+      if (gamepadJump && !prevGamepadJump) {
+          initiateJump();
+      }
+      prevGamepadJump = gamepadJump;
+
       // Normalize target keyboard vectors to prevent diagonal speed boost
-      if (targetKeyboardX !== 0 && targetKeyboardZ !== 0) {
+      // Only normalize if it's from keyboard (not analog gamepad which shouldn't be forced to 1.0 length unless > 1)
+      if (!gamepadActive && targetKeyboardX !== 0 && targetKeyboardZ !== 0) {
         const len = Math.sqrt(targetKeyboardX * targetKeyboardX + targetKeyboardZ * targetKeyboardZ);
         targetKeyboardX /= len;
         targetKeyboardZ /= len;
+      } else if (gamepadActive) {
+          // Clamp magnitude to 1 for analog sticks so they don't exceed max speed
+          const len = Math.sqrt(targetKeyboardX * targetKeyboardX + targetKeyboardZ * targetKeyboardZ);
+          if (len > 1.0) {
+              targetKeyboardX /= len;
+              targetKeyboardZ /= len;
+          }
       }
 
       // Smooth keyboard movement to create analog joystick feel
@@ -863,20 +973,24 @@ export default function App() {
       let nextY = state.position.y;
       
       if (isSwimmingNow) {
-        // Sync vertical velocity to the 3D target velocity so camera pitch works naturally
-        state.verticalVelocity = state.velocity.y;
+        // Update player pitch to match velocity
+        const speed = state.velocity.length() || 0.1;
+        const pitchTarget = Math.asin(Math.max(-1, Math.min(1, -state.velocity.y / speed)));
+        playerRootGroup.rotation.x = THREE.MathUtils.lerp(playerRootGroup.rotation.x, pitchTarget, dt * 5);
 
-        // Spacebar to ascend
-        if (keys[' ']) {
-            state.verticalVelocity += 15 * dt;
-            if (state.verticalVelocity > 5) state.verticalVelocity = 5;
+        // Spacebar or jump button to ascend to surface
+        if (keys[' '] || jumpActive || gamepadJump) {
+            // Smoothly lift the player up when holding space
+            state.velocity.y = THREE.MathUtils.lerp(state.velocity.y, 5.0, dt * 2);
+            state.velocity.x *= Math.pow(0.8, dt);
+            state.velocity.z *= Math.pow(0.8, dt);
+        } else if (state.speed < 0.2) {
+            // Gentle buoyancy floating up when not moving
+            state.velocity.y = THREE.MathUtils.lerp(state.velocity.y, 1.0, dt * 0.5);
         }
 
-        // Apply water drag to vertical velocity
-        state.verticalVelocity *= Math.pow(0.05, dt);
-
-        // Sync it back
-        state.velocity.y = state.verticalVelocity;
+        // Sync vertical velocity for position update
+        state.verticalVelocity = state.velocity.y;
         
         nextY += state.verticalVelocity * dt;
         
@@ -890,7 +1004,7 @@ export default function App() {
         }
 
         // To jump out of water, wait until at surface and press space to breach
-        if (nextY >= waterSurfaceY - 0.1 && keys[' '] && state.jumpPhase === JumpPhase.IDLE) {
+        if (nextY >= waterSurfaceY - 0.1 && (keys[' '] || jumpActive || gamepadJump) && state.jumpPhase === JumpPhase.IDLE) {
             state.jumpPhase = JumpPhase.PREP;
             state.jumpProgress = 0;
         }
@@ -906,6 +1020,9 @@ export default function App() {
           }
         }
       } else {
+        // Reset player pitch
+        playerRootGroup.rotation.x = THREE.MathUtils.lerp(playerRootGroup.rotation.x, 0, dt * 10);
+        
         if (state.jumpPhase === JumpPhase.PREP) {
           state.jumpProgress += dt;
           if (state.jumpProgress >= 0.05) {
@@ -1071,8 +1188,70 @@ export default function App() {
       // Check if we are swimming 
       (state as any).isSwimming = state.position.y <= waterSurfaceY + 0.1 && worldGrid.getGroundHeight(state.position.x, state.position.z) < waterSurfaceY;
 
+      if ((state as any).isSwimming) {
+          state.wetness = 1.0;
+      } else if (state.wetness && state.wetness > 0) {
+          state.wetness = Math.max(0, state.wetness - dt * 0.05); // Takes 20 seconds to dry
+      }
+
       // Update actual visual group coordinates inside scene
       playerRootGroup.position.copy(state.position);
+
+      // Add gentle bobbing when treading water at the surface
+      if ((state as any).isSwimming && state.position.y >= waterSurfaceY - 0.05) {
+          playerRootGroup.position.y += Math.sin(globalTime * 3) * 0.08;
+          
+          if (Math.random() < 0.1 && state.speed > 0.5) {
+              const r = ripples.find(rip => rip.userData.age > 0.6);
+              if (r) {
+                  r.position.set(state.position.x, waterSurfaceY + 0.02, state.position.z);
+                  r.userData.age = 0;
+                  r.visible = true;
+              }
+          }
+      }
+
+      // Update ripples
+      for (const r of ripples) {
+          if (r.userData.age <= 0.6) {
+              r.userData.age += dt;
+              r.scale.setScalar(1 + r.userData.age * 3);
+              (r.material as THREE.Material).opacity = 0.5 * (1 - r.userData.age / 0.6);
+          } else {
+              r.visible = false;
+          }
+      }
+
+      // Apply wetness effect to character materials
+      if (state.wetness && state.wetness > 0) {
+          animator.group.traverse((child: any) => {
+              if (child.isMesh && child.material) {
+                  const material = child.material as THREE.MeshStandardMaterial;
+                  if (!material.userData.originalColor) {
+                      material.userData.originalColor = material.color.clone();
+                      material.userData.originalRoughness = material.roughness;
+                  }
+                  const origColor = material.userData.originalColor;
+                  const origRough = material.userData.originalRoughness !== undefined ? material.userData.originalRoughness : 1.0;
+                  
+                  // Darken color and reduce roughness when wet
+                  const targetColor = origColor.clone().multiplyScalar(1 - state.wetness! * 0.4);
+                  material.color.lerp(targetColor, 0.1);
+                  material.roughness = THREE.MathUtils.lerp(material.roughness, origRough - (state.wetness! * 0.6), 0.1);
+              }
+          });
+      } else if (state.wetness === 0) {
+          animator.group.traverse((child: any) => {
+              if (child.isMesh && child.material) {
+                  const material = child.material as THREE.MeshStandardMaterial;
+                  if (material.userData.originalColor) {
+                      material.color.lerp(material.userData.originalColor, 0.1);
+                      material.roughness = THREE.MathUtils.lerp(material.roughness, material.userData.originalRoughness, 0.1);
+                  }
+              }
+          });
+      }
+
       lanternLight.position.set(state.position.x, state.position.y + 2, state.position.z);
 
       // Gradual natural health auto-recovery on green grass plains (regenerate 3 health per second)
@@ -1100,22 +1279,27 @@ export default function App() {
           const ratioY = Math.min(1, Math.max(-1, dy / 45));
           
           // Snappy, incredibly responsive continuous orbital speeds
-          cameraYaw -= ratioX * 2.8 * dt;
+          cameraYaw -= ratioX * 5.0 * dt;
           cameraPitch = Math.max(-1.4, Math.min(1.4, cameraPitch + ratioY * 1.8 * dt));
         }
       }
 
+      // Keep orbital focus locked on explorer chest height
+      const focalPoint = state.position.clone().add(new THREE.Vector3(0, 1.4, 0));
+
+      // Calculate dynamic distance: Zoom in when looking up or down
+      const pitchRatio = Math.abs(cameraPitch) / 1.4;
+      const currentCamDist = baseCameraDistance - (3.8 * pitchRatio);
+
       const dynamicOffset = new THREE.Vector3(
-        cameraDistance * Math.sin(cameraYaw) * Math.cos(cameraPitch),
-        cameraDistance * Math.sin(cameraPitch),
-        cameraDistance * Math.cos(cameraYaw) * Math.cos(cameraPitch)
+        currentCamDist * Math.sin(cameraYaw) * Math.cos(cameraPitch),
+        currentCamDist * Math.sin(cameraPitch),
+        currentCamDist * Math.cos(cameraYaw) * Math.cos(cameraPitch)
       );
       
-      const targetCamPos = state.position.clone().add(dynamicOffset);
+      const targetCamPos = focalPoint.clone().add(dynamicOffset);
       camera.position.lerp(targetCamPos, dt * 6.5);
       
-      // Keep orbital focus locked on explorer chest height
-      const focalPoint = state.position.clone().add(new THREE.Vector3(0, 1.6, 0));
       camera.lookAt(focalPoint);
 
       // Lock our custom warm headlight directly to the camera center
@@ -1287,6 +1471,7 @@ export default function App() {
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
 
       worldGrid.disposeAll();
       renderer.dispose();
@@ -1300,6 +1485,18 @@ export default function App() {
     <div className={isFakeFullscreen ? "fixed inset-0 z-[99999] w-full h-[100dvh] bg-[#050508] text-slate-300 font-sans overflow-hidden" : "w-screen h-[100dvh] bg-[#050508] text-slate-300 font-sans relative overflow-hidden"}>
       {/* PWA Cryptographic Identity */}
       <AccountUI />
+      
+      {/* Gamepad Connection Overlay */}
+      {gamepadName && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/60 border border-cyan-500/30 backdrop-blur text-cyan-400 px-4 py-1.5 rounded-full text-xs font-mono tracking-wider z-50 pointer-events-none flex flex-col items-center gap-2">
+           <div className="flex items-center gap-2">
+             <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></div>
+             {gamepadName}
+           </div>
+           <div id="gamepad-debug" className="text-[10px] text-cyan-200/70 whitespace-pre"></div>
+        </div>
+      )}
+
       {/* Cinematic Background Grid Underlay */}
       <div className="absolute inset-0 opacity-40 pointer-events-none z-0">
         <div className="absolute top-0 left-0 w-full h-full" style={{ backgroundImage: 'radial-gradient(circle at 50% 50%, #1a1a2e 0%, #050508 100%)' }}></div>

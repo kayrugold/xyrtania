@@ -139,6 +139,17 @@ export class CharacterAnimator {
     }
 
     nextAction.reset();
+    
+    // Mixamo standard jump animations have a long crouch build-up.
+    // Our game jump is snappy (0.05s delay), so we skip the crouch buildup (about 0.4s)
+    // and speed up the mid-air portion so it looks like a responsive leap.
+    if (name === 'jump') {
+        nextAction.time = 0.4;
+        nextAction.setEffectiveTimeScale(1.5);
+    } else {
+        nextAction.setEffectiveTimeScale(1.0);
+    }
+    
     nextAction.fadeIn(duration);
     nextAction.play();
     
