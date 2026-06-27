@@ -207,6 +207,20 @@ export default function App() {
     const networkManager = new NetworkManager('xyrtania-world-1', 'main-room');
     const remoteAnimators = new Map<string, CharacterAnimator>();
 
+    networkManager.onPeerAnimationStateChange = (peerId, animationState) => {
+        const remAnim = remoteAnimators.get(peerId);
+        if (remAnim) {
+            remAnim.playAction(animationState, 0.25);
+        }
+    };
+
+    networkManager.onPeerDisplayNameChange = (peerId, displayName) => {
+        const remAnim = remoteAnimators.get(peerId);
+        if (remAnim && displayName) {
+            remAnim.updateNametag(displayName);
+        }
+    };
+
     // --- 6. NATIVE 3D HUD COMPONENT GENERATION (HUD Scene) ---
     const hudElementsGroup = new THREE.Group();
     hudScene.add(hudElementsGroup);
@@ -1517,14 +1531,23 @@ export default function App() {
         }
         let remAnim = remoteAnimators.get(peerId);
         if (!remAnim) {
-           remAnim = new CharacterAnimator();
+           remAnim = new CharacterAnimator(true);
            scene.add(remAnim.group);
            remAnim.group.position.copy(peer.state.position);
+           if (peer.state.animationState) {
+              remAnim.currentActionName = peer.state.animationState;
+           }
            remAnim.loadModelAndAnimations(peer.state.modelUrl).catch(e => console.error(e));
            remoteAnimators.set(peerId, remAnim);
+           peer.animator = remAnim;
         } else if (peer.state.modelUrl && remAnim.currentModelUrl !== peer.state.modelUrl) {
            // Swap model on the fly if they changed characters
+           const currentAction = remAnim.currentActionName;
            remAnim.loadModelAndAnimations(peer.state.modelUrl).catch(e => console.error(e));
+           remAnim.currentActionName = currentAction;
+           peer.animator = remAnim;
+        } else {
+           peer.animator = remAnim;
         }
 
         // Interpolate visual positions smoothly
@@ -1589,6 +1612,8 @@ export default function App() {
         // Network Broadcast
         state.displayName = localStorage.getItem('xyrtania_display_name') || 'Anonymous';
         state.modelUrl = animator.currentModelUrl;
+        state.currentAnimation = animator.currentActionName;
+        state.animationState = animator.currentActionName;
         animator.updateNametag(state.displayName);
         networkManager.broadcastState(state);
 

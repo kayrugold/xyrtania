@@ -13,6 +13,8 @@ export enum JumpPhase {
 export interface PlayerState {
   displayName?: string;
   modelUrl?: string;
+  currentAnimation?: string;
+  animationState?: string;
   position: THREE.Vector3;
   velocity: THREE.Vector3;
   direction: number; // yaw angle in radians

@@ -26,6 +26,8 @@ export class CharacterAnimator {
   private baseYOffset = 0;
   public targetHeight = 2.2;
   public currentModelUrl: string = '';
+  public currentActionName: string = 'neutral_idle';
+  public isRemote: boolean = false;
   
   private static modelCache = new Map<string, Promise<THREE.Group>>();
   private static animCache = new Map<string, Promise<THREE.Group>>();
@@ -69,7 +71,8 @@ export class CharacterAnimator {
       }
   }
 
-  constructor() {
+  constructor(isRemote: boolean = false) {
+    this.isRemote = isRemote;
     this.group = new THREE.Group();
     this.group.name = 'explorer';
   }
@@ -98,6 +101,23 @@ export class CharacterAnimator {
     return this.animCache.get(url)!;
   }
 
+  public static disposeHierarchy(obj: THREE.Object3D) {
+      obj.traverse((child: any) => {
+          if (child.isMesh) {
+              if (child.geometry) {
+                  child.geometry.dispose();
+              }
+              if (child.material) {
+                  if (Array.isArray(child.material)) {
+                      child.material.forEach((mat) => mat.dispose());
+                  } else {
+                      child.material.dispose();
+                  }
+              }
+          }
+      });
+  }
+
   public async loadModelAndAnimations(modelUrl: string = '/assets/character/base_male.fbx') {
     this.currentModelUrl = modelUrl;
     // Clear old group children except nametag
@@ -107,7 +127,10 @@ export class CharacterAnimator {
             toRemove.push(c);
         }
     });
-    toRemove.forEach(c => this.group.remove(c));
+    toRemove.forEach(c => {
+        this.group.remove(c);
+        CharacterAnimator.disposeHierarchy(c);
+    });
     
     if (this.mixer) {
         this.mixer.stopAllAction();
@@ -213,15 +236,43 @@ export class CharacterAnimator {
               } else {
                   child.material = applyMaps(child.material);
               }
+          } else if (child.material) {
+              // Polish non-custom standard FBX models while properly keeping original embedded textures
+              const polishStandardMat = (origMat: any) => {
+                  if (origMat.map) {
+                      if (origMat.isMeshStandardMaterial || origMat.isMeshPhysicalMaterial) {
+                          origMat.roughness = 0.6;
+                          origMat.metalness = 0.1;
+                          return origMat;
+                      }
+                      return new THREE.MeshStandardMaterial({
+                          map: origMat.map,
+                          normalMap: origMat.normalMap,
+                          roughness: 0.6,
+                          metalness: 0.1,
+                          color: origMat.color || new THREE.Color(1, 1, 1)
+                      });
+                  }
+                  return new THREE.MeshStandardMaterial({
+                      color: modelUrl.includes('female') ? 0xfecdd3 : 0xbae6fd, // Soft pink for female, soft blue for male
+                      roughness: 0.6,
+                      metalness: 0.1,
+                  });
+              };
+              if (Array.isArray(child.material)) {
+                  child.material = child.material.map(polishStandardMat);
+              } else {
+                  child.material = polishStandardMat(child.material);
+              }
           }
         }
          if (!foundBone && child.isBone) {
-           const name = child.name;
-           if (name.includes('Hips')) {
-             this.basePrefix = name.replace('Hips', '');
-             meshHipsRestingPosition.copy(child.position);
-             foundBone = true;
-           }
+            const name = child.name;
+            if (name.includes('Hips')) {
+              this.basePrefix = name.replace('Hips', '');
+              meshHipsRestingPosition.copy(child.position);
+              foundBone = true;
+            }
          }
       });
       
@@ -237,7 +288,10 @@ export class CharacterAnimator {
               concurrentToRemove.push(c);
           }
       });
-      concurrentToRemove.forEach(c => this.group.remove(c));
+      concurrentToRemove.forEach(c => {
+          this.group.remove(c);
+          CharacterAnimator.disposeHierarchy(c);
+      });
 
       this.group.add(object);
       this.mixer = new THREE.AnimationMixer(object);
@@ -262,8 +316,9 @@ export class CharacterAnimator {
         try {
           const animObject = await CharacterAnimator.getAnimation(anim.url);
           if (animObject.animations && animObject.animations.length > 0) {
-            const clip = animObject.animations[0].clone(); // Clone clip to prevent shared mutation
-            clip.name = anim.name;
+            // Deep clone tracks to isolate track mutations entirely from shared cache
+            const tracks = animObject.animations[0].tracks.map(t => t.clone());
+            const clip = new THREE.AnimationClip(anim.name, animObject.animations[0].duration, tracks);
             
             clip.tracks.forEach((track) => {
                track.name = track.name.replace(/^(mixamorig[a-zA-Z0-9_]*:|mixamorig\d*)/, this.basePrefix);
@@ -295,7 +350,8 @@ export class CharacterAnimator {
       }));
 
       this.modelLoaded = true;
-      this.playAction('idle', 0);
+      // Triggers stored animation state, defaulting to 'neutral_idle' or 'idle'
+      this.playAction(this.currentActionName || 'idle', 0);
       
     } catch (err) {
       console.error('Error loading base mesh', err);
@@ -312,8 +368,27 @@ export class CharacterAnimator {
   }
 
   public playAction(name: string, duration: number = 0.2) {
-    const nextAction = this.actions[name];
-    if (!nextAction || nextAction === this.activeAction) return;
+    this.currentActionName = name;
+    if (!this.modelLoaded) return;
+
+    // Map animation names dynamically if not found in Mixer actions
+    let mappedName = name;
+    if (!this.actions[mappedName]) {
+       if (name === 'idle') mappedName = 'neutral_idle';
+       if (name === 'crouch') mappedName = 'crouch_idle';
+       if (name === 'prone') mappedName = 'prone_forward';
+       if (name === 'walk') mappedName = 'walk';
+       if (name === 'jog') mappedName = 'jog';
+       if (name === 'run') mappedName = 'run';
+       if (name === 'jump') mappedName = 'jump';
+       if (name === 'pushing') mappedName = 'pushing';
+       if (name === 'swim') mappedName = 'swim';
+       if (name === 'tread') mappedName = 'tread';
+    }
+
+    const nextAction = this.actions[mappedName];
+    if (!nextAction) return;
+    if (nextAction === this.activeAction) return;
 
     if (this.activeAction) {
       this.activeAction.fadeOut(duration);
@@ -324,7 +399,7 @@ export class CharacterAnimator {
     // Mixamo standard jump animations have a long crouch build-up.
     // Our game jump is snappy (0.05s delay), so we skip the crouch buildup (about 0.4s)
     // and speed up the mid-air portion so it looks like a responsive leap.
-    if (name === 'jump') {
+    if (mappedName === 'jump') {
         nextAction.time = 0.4;
         nextAction.setEffectiveTimeScale(1.5);
         nextAction.timeScale = 1.0;
@@ -415,6 +490,11 @@ export class CharacterAnimator {
 
     if (!this.modelLoaded) return;
     
+    if (this.isRemote && (state.animationState || state.currentAnimation)) {
+      this.playAction(state.animationState || state.currentAnimation || 'neutral_idle');
+      return;
+    }
+
     const isSwimming = (state as any).isSwimming || false;
     const isCrouching = (state as any).isCrouching || false;
     const isProne = (state as any).isProne || false;

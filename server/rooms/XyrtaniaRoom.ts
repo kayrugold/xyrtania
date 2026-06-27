@@ -9,6 +9,8 @@ export class Player extends Schema {
   @type("number") rotation: number = 0;
   @type("string") avatarId: string = "";
   @type("string") currentAnimation: string = "";
+  @type("string") animationState: string = "";
+  @type("string") displayName: string = "";
   @type("boolean") isCrouching: boolean = false;
   @type("boolean") isProne: boolean = false;
 }
@@ -30,8 +32,18 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
         if (data.rotation !== undefined) player.rotation = data.rotation;
         if (data.avatarId !== undefined) player.avatarId = data.avatarId;
         if (data.currentAnimation !== undefined) player.currentAnimation = data.currentAnimation;
+        if (data.animationState !== undefined) player.animationState = data.animationState;
+        if (data.displayName !== undefined) player.displayName = data.displayName;
         if (data.isCrouching !== undefined) player.isCrouching = data.isCrouching;
         if (data.isProne !== undefined) player.isProne = data.isProne;
+      }
+    });
+
+    this.onMessage("setAnimation", (client, animationState) => {
+      const player = this.state.players.get(client.sessionId);
+      if (player && typeof animationState === 'string') {
+        player.animationState = animationState;
+        player.currentAnimation = animationState;
       }
     });
   }
@@ -45,7 +57,9 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
     player.z = 0;
     player.rotation = 0;
     player.avatarId = options.avatarId || "";
+    player.displayName = options.displayName || "Anonymous";
     player.currentAnimation = "idle";
+    player.animationState = "idle";
     player.isCrouching = false;
     player.isProne = false;
     
