@@ -178,8 +178,8 @@ export class NetworkManager {
       this.handlePresence(peerId, {});
       
       // If we have an active state to share, we should immediately broadcast to the new peer
-      if (this.lastKnownState) {
-          this.broadcastState(this.lastKnownState);
+      if (this.lastKnownState && this.stateAction) {
+          this.stateAction.send(this.getSyncState(this.lastKnownState), peerId);
       }
     };
     

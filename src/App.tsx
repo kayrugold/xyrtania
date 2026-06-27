@@ -595,8 +595,13 @@ export default function App() {
     CharacterAnimator.preloadCharacters(characters);
     
     let currentCharacterIndex = 0;
+    let lastSwitchTime = 0;
 
     function switchCharacter() {
+        const now = performance.now();
+        if (now - lastSwitchTime < 1500) return;
+        lastSwitchTime = now;
+        
         currentCharacterIndex = (currentCharacterIndex + 1) % characters.length;
         animator.loadModelAndAnimations(characters[currentCharacterIndex]).catch(e => console.error('Error switching character:', e));
     }
@@ -1511,6 +1516,7 @@ export default function App() {
         if (!remAnim) {
            remAnim = new CharacterAnimator();
            scene.add(remAnim.group);
+           remAnim.group.position.copy(peer.state.position);
            remAnim.loadModelAndAnimations(peer.state.modelUrl).catch(e => console.error(e));
            remoteAnimators.set(peerId, remAnim);
         } else if (peer.state.modelUrl && remAnim.currentModelUrl !== peer.state.modelUrl) {
