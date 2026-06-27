@@ -12,17 +12,22 @@ export class NetworkManager {
   private client: Client;
   private room?: Room;
   public peers: Map<string, RemotePlayer> = new Map();
+  private isDisconnected = false;
   
   public onPeerJoin?: (id: string) => void;
   public onPeerLeave?: (id: string) => void;
   
   private lastKnownState?: PlayerState;
 
+  public get sessionId(): string | undefined {
+    return this.room?.sessionId;
+  }
+
   constructor(appId: string, roomName: string) {
-    // Dynamic endpoint fallback for development vs production
-    const endpoint = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
-      ? 'ws://localhost:2567' 
-      : 'wss://xyrtania-server.onrender.com';
+    // Dynamic endpoint to connect to the current host's embedded Colyseus server
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const endpoint = `${protocol}//${host}`;
       
     this.client = new Client(endpoint);
     this.connectToServer();
@@ -30,11 +35,17 @@ export class NetworkManager {
 
   private async connectToServer() {
     try {
-      this.room = await this.client.joinOrCreate("xyrtania_room");
+      const room = await this.client.joinOrCreate("xyrtania_room");
+      if (this.isDisconnected) {
+          room.leave();
+          return;
+      }
+      this.room = room;
       console.log("Joined colyseus room!", this.room.roomId);
 
       this.room.state.players.onAdd((player: any, sessionId: string) => {
           if (sessionId === this.room?.sessionId) {
+              this.peers.delete(sessionId);
               return; // Ignore local player
           }
           
@@ -76,7 +87,9 @@ export class NetworkManager {
       });
 
     } catch (e: any) {
-      console.warn("Colyseus connection unavailable:", e?.message || e);
+      if (!this.isDisconnected) {
+          console.warn("Colyseus connection unavailable:", e?.message || e);
+      }
     }
   }
 
@@ -112,7 +125,11 @@ export class NetworkManager {
   
   public getNearbyPeers(center: THREE.Vector3, maxDistance: number): RemotePlayer[] {
       const nearby: RemotePlayer[] = [];
+      const localId = this.room?.sessionId;
       for (const peer of this.peers.values()) {
+         if (localId && peer.id === localId) {
+            continue; // Ensure local player is never returned as a nearby peer
+         }
          const dist = peer.state.position.distanceTo(center);
          if (dist < maxDistance) {
             nearby.push(peer);
@@ -123,6 +140,7 @@ export class NetworkManager {
   }
 
   public disconnect() {
+      this.isDisconnected = true;
       if (this.room) {
           this.room.leave();
       }

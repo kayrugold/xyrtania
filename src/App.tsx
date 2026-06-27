@@ -1512,6 +1512,9 @@ export default function App() {
 
       for (const peer of nearbyPeers) {
         const peerId = peer.id;
+        if (peerId === networkManager.sessionId) {
+          continue; // Extra safeguard to never render our own player as a remote peer
+        }
         let remAnim = remoteAnimators.get(peerId);
         if (!remAnim) {
            remAnim = new CharacterAnimator();
