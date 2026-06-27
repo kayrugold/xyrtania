@@ -31,6 +31,44 @@ export class CharacterAnimator {
   private static animCache = new Map<string, Promise<THREE.Group>>();
   private static textureCache = new Map<string, Promise<THREE.Texture>>();
 
+  public static async preloadCharacters(characterUrls: string[]) {
+      const animations = [
+        '/assets/character/animations/idle.fbx',
+        '/assets/character/animations/walk.fbx',
+        '/assets/character/animations/jog.fbx',
+        '/assets/character/animations/run.fbx',
+        '/assets/character/animations/jump.fbx',
+        '/assets/character/animations/pushing.fbx',
+        '/assets/character/animations/swim.fbx',
+        '/assets/character/animations/tread.fbx',
+        '/assets/character/animations/neutral_idle.fbx',
+        '/assets/character/animations/climbing.fbx',
+        '/assets/character/animations/crouch_idle.fbx',
+        '/assets/character/animations/crouched_walking.fbx',
+        '/assets/character/animations/prone_forward.fbx',
+      ];
+
+      // Preload animations silently in the background
+      for (const anim of animations) {
+          this.getAnimation(anim).catch(() => {});
+          await new Promise(r => setTimeout(r, 50)); // stagger parsing
+      }
+
+      // Preload character models
+      for (const url of characterUrls) {
+          this.getModel(url).catch(() => {});
+          
+          if (url.includes('humanoid') || url.includes('explorer_clone')) {
+              const basePath = url.substring(0, url.lastIndexOf('/'));
+              this.getTexture(`${basePath}/Color.png`).catch(() => {});
+              this.getTexture(`${basePath}/Normal.png`).catch(() => {});
+              this.getTexture(`${basePath}/Metallic.png`).catch(() => {});
+              this.getTexture(`${basePath}/Roughness.png`).catch(() => {});
+          }
+          await new Promise(r => setTimeout(r, 50)); // stagger parsing
+      }
+  }
+
   constructor() {
     this.group = new THREE.Group();
     this.group.name = 'explorer';

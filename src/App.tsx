@@ -590,6 +590,10 @@ export default function App() {
       '/assets/character/humanoid/Unarmed_Idle.fbx',
       '/assets/character/explorer_clone/Breathing_Idle.fbx'
     ];
+    
+    // Kickoff background async preloading of all models to avoid lag spikes
+    CharacterAnimator.preloadCharacters(characters);
+    
     let currentCharacterIndex = 0;
 
     function switchCharacter() {

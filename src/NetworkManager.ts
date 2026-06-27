@@ -68,14 +68,27 @@ export class NetworkManager {
     }
   }
 
+  private lastHiddenTime: number = 0;
+
   private handleVisibilityChange() {
-      if (document.visibilityState === 'visible') {
-          this.checkConnection();
+      if (document.visibilityState === 'hidden') {
+          this.lastHiddenTime = performance.now();
+      } else if (document.visibilityState === 'visible') {
+          const timeHidden = performance.now() - this.lastHiddenTime;
+          if (timeHidden > 10000) {
+              console.log(`Tab was hidden for ${Math.round(timeHidden / 1000)}s. Forcing reconnect...`);
+              this.reconnect();
+          } else {
+              this.checkConnection();
+          }
       }
   }
 
   private handleFocus() {
-      this.checkConnection();
+      if (document.visibilityState === 'visible') {
+          // If we weren't hidden, but lost focus and gained it, just check normally
+          this.checkConnection();
+      }
   }
 
   private checkConnection() {
