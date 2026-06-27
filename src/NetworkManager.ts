@@ -1,4 +1,4 @@
-import { joinRoom, Room, MessageAction } from '@trystero-p2p/mqtt';
+import { Client, Room } from 'colyseus.js';
 import { PlayerState } from './types';
 import * as THREE from 'three';
 
@@ -9,280 +9,96 @@ export interface RemotePlayer {
 }
 
 export class NetworkManager {
-  private room!: Room;
+  private client: Client;
+  private room?: Room;
   public peers: Map<string, RemotePlayer> = new Map();
-  
-  private stateAction!: MessageAction<any>;
-  private pingAction!: MessageAction<any>;
-  private ackAction!: MessageAction<any>;
   
   public onPeerJoin?: (id: string) => void;
   public onPeerLeave?: (id: string) => void;
   
   private lastKnownState?: PlayerState;
-  
-  private heartbeatInterval: any;
-  private cleanupInterval: any;
-  
-  private appId: string;
-  private roomName: string;
-  private isReconnecting = false;
 
   constructor(appId: string, roomName: string) {
-    this.appId = appId;
-    this.roomName = roomName;
-    
-    this.initRoom();
-
-    // Heartbeat ping loop (The "Hear Me" Loop)
-    this.heartbeatInterval = setInterval(() => {
-        if (this.lastKnownState && !this.isReconnecting) {
-            try {
-                this.pingAction.send({ displayName: this.lastKnownState.displayName, modelUrl: this.lastKnownState.modelUrl });
-            } catch (e) {
-                console.warn('Ping failed, scheduling reconnect...', e);
-                this.reconnect();
-            }
-        }
-    }, 4000);
-
-    // Stale peer cleanup loop
-    this.cleanupInterval = setInterval(() => {
-        const now = performance.now();
-        for (const [peerId, peer] of this.peers.entries()) {
-            if (now - peer.lastUpdate > 12000) {
-                console.log(`Peer stale, cleaning up: ${peerId}`);
-                this.removePeer(peerId);
-            }
-        }
-    }, 5000);
-
-    this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
-    this.handleFocus = this.handleFocus.bind(this);
-    
-    if (typeof document !== 'undefined') {
-        document.addEventListener('visibilitychange', this.handleVisibilityChange);
-    }
-    if (typeof window !== 'undefined') {
-        window.addEventListener('focus', this.handleFocus);
-    }
-  }
-
-  private lastHiddenTime: number = 0;
-
-  private handleVisibilityChange() {
-      if (document.visibilityState === 'hidden') {
-          this.lastHiddenTime = performance.now();
-      } else if (document.visibilityState === 'visible') {
-          const timeHidden = performance.now() - this.lastHiddenTime;
-          if (timeHidden > 10000) {
-              console.log(`Tab was hidden for ${Math.round(timeHidden / 1000)}s. Forcing reconnect...`);
-              this.reconnect();
-          } else {
-              this.checkConnection();
-          }
-      }
-  }
-
-  private handleFocus() {
-      if (document.visibilityState === 'visible') {
-          // If we weren't hidden, but lost focus and gained it, just check normally
-          this.checkConnection();
-      }
-  }
-
-  private checkConnection() {
-      if (this.isReconnecting) return;
+    // Dynamic endpoint fallback for development vs production
+    const endpoint = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+      ? 'ws://localhost:2567' 
+      : 'wss://' + window.location.host;
       
-      const now = performance.now();
-      let hasActivePeers = false;
-      for (const peer of this.peers.values()) {
-          if (now - peer.lastUpdate < 10000) {
-              hasActivePeers = true;
-              break;
-          }
-      }
-
-      try {
-          if (this.lastKnownState) {
-              this.pingAction.send({ displayName: this.lastKnownState.displayName, modelUrl: this.lastKnownState.modelUrl });
-          }
-      } catch (e) {
-          console.log('Socket explicitly dead on focus check. Reconnecting...', e);
-          this.reconnect();
-          return;
-      }
-
-      if (!hasActivePeers && this.peers.size > 0) {
-          console.log('Tab became visible/focused but peers are stale. Reconnecting...');
-          this.reconnect();
-      } else {
-          console.log('Tab focused, connection seems alive. Skipped reconnect.');
-      }
+    this.client = new Client(endpoint);
+    this.connectToServer();
   }
 
-  private reconnect() {
-      if (this.isReconnecting) return;
-      this.isReconnecting = true;
-      console.log('Triggering silent background network reconnection...');
-      
-      try {
-          if (this.room) {
-              this.room.leave();
+  private async connectToServer() {
+    try {
+      this.room = await this.client.joinOrCreate("xyrtania_room");
+      console.log("Joined colyseus room!", this.room.roomId);
+
+      this.room.state.players.onAdd((player: any, sessionId: string) => {
+          if (sessionId === this.room?.sessionId) {
+              return; // Ignore local player
           }
-      } catch (e) {
-          console.warn('Error leaving room during reconnect', e);
-      }
-      
-      this.peers.clear(); // Flush stale peers
-      
-      setTimeout(() => {
-          this.initRoom();
-          this.isReconnecting = false;
-          if (this.lastKnownState) {
-              this.broadcastState(this.lastKnownState); // Re-broadcast our presence
-          }
-      }, 1000); // Brief delay to ensure sockets are fully closed
-  }
-
-  private initRoom() {
-    const config = {
-      appId: this.appId,
-      rtcConfig: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          {
-            urls: 'turn:openrelay.metered.ca:80',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-          },
-          {
-            urls: 'turn:openrelay.metered.ca:443',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-          },
-          {
-            urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-            username: 'openrelayproject',
-            credential: 'openrelayproject'
-          }
-        ]
-      }
-    };
-    this.room = joinRoom(config, this.roomName);
-    
-    this.room.onPeerJoin = (peerId) => {
-      console.log(`Peer joined (Trystero event): ${peerId}`);
-      this.handlePresence(peerId, {});
-      
-      // If we have an active state to share, we should immediately broadcast to the new peer
-      if (this.lastKnownState && this.stateAction) {
-          this.stateAction.send(this.getSyncState(this.lastKnownState), peerId);
-      }
-    };
-    
-    this.room.onPeerLeave = (peerId) => {
-      console.log(`Peer left (Trystero event): ${peerId}`);
-      this.removePeer(peerId);
-    };
-    
-    this.stateAction = this.room.makeAction<any>('state');
-    this.pingAction = this.room.makeAction<any>('ping');
-    this.ackAction = this.room.makeAction<any>('ack');
-    
-    this.pingAction.onMessage = (data, context) => {
-        const peerId = context.peerId;
-        this.handlePresence(peerId, data);
-        if (this.lastKnownState) {
-            this.ackAction.send({ displayName: this.lastKnownState.displayName }, peerId);
-            this.stateAction.send(this.getSyncState(this.lastKnownState), peerId);
-        }
-    };
-
-    this.ackAction.onMessage = (data, context) => {
-        const peerId = context.peerId;
-        this.handlePresence(peerId, data);
-    };
-
-    this.stateAction.onMessage = (data, context) => {
-       const peerId = context.peerId;
-       this.handlePresence(peerId, data);
-       
-       const peer = this.peers.get(peerId);
-       if (peer && data && data.position) {
-           peer.state.position.set(data.position.x, data.position.y, data.position.z);
-           peer.state.velocity.set(data.velocity.x, data.velocity.y, data.velocity.z);
-           peer.state.isGrounded = data.isGrounded;
-           peer.state.speed = data.speed;
-           peer.state.verticalVelocity = data.verticalVelocity;
-           peer.state.jumpPhase = data.jumpPhase;
-           peer.state.jumpProgress = data.jumpProgress;
-           peer.state.direction = data.direction;
-           (peer.state as any).isSwimming = data.isSwimming;
-           peer.state.isCrouching = data.isCrouching;
-           peer.state.isProne = data.isProne;
-       }
-    };
-  }
-
-  private handlePresence(peerId: string, data: any) {
-      if (!this.peers.has(peerId)) {
-          console.log(`Discovered peer via presence/state: ${peerId}`);
-          this.peers.set(peerId, {
-              id: peerId,
+          
+          console.log("Player joined:", sessionId);
+          this.peers.set(sessionId, {
+              id: sessionId,
               state: this.createEmptyState(),
               lastUpdate: performance.now()
           });
-          const peer = this.peers.get(peerId)!;
-          if (data && data.displayName) {
-             peer.state.displayName = data.displayName;
-          }
-          if (data && data.modelUrl) {
-             peer.state.modelUrl = data.modelUrl;
-          }
-          if (this.onPeerJoin) this.onPeerJoin(peerId);
-      } else {
-          const peer = this.peers.get(peerId)!;
-          peer.lastUpdate = performance.now();
-          if (data && data.displayName) {
-             peer.state.displayName = data.displayName;
-          }
-          if (data && data.modelUrl) {
-             peer.state.modelUrl = data.modelUrl;
-          }
-      }
-  }
 
-  private removePeer(peerId: string) {
-      if (this.peers.has(peerId)) {
-          this.peers.delete(peerId);
-          if (this.onPeerLeave) this.onPeerLeave(peerId);
-      }
-  }
-  
-  private getSyncState(state: PlayerState) {
-    return {
-       displayName: state.displayName,
-       modelUrl: state.modelUrl,
-       position: { x: state.position.x, y: state.position.y, z: state.position.z },
-       velocity: { x: state.velocity.x, y: state.velocity.y, z: state.velocity.z },
-       isGrounded: state.isGrounded,
-       speed: state.speed,
-       verticalVelocity: state.verticalVelocity,
-       jumpPhase: state.jumpPhase,
-       jumpProgress: state.jumpProgress,
-       direction: state.direction,
-       isSwimming: (state as any).isSwimming || false,
-       isCrouching: state.isCrouching || false,
-       isProne: state.isProne || false
-    };
+          const peer = this.peers.get(sessionId)!;
+          peer.state.position.set(player.x, player.y, player.z);
+          peer.state.direction = player.rotation;
+          peer.state.modelUrl = player.avatarId;
+          peer.state.isCrouching = player.isCrouching;
+          peer.state.isProne = player.isProne;
+
+          if (this.onPeerJoin) this.onPeerJoin(sessionId);
+
+          player.onChange((changes: any[]) => {
+              const peerToUpdate = this.peers.get(sessionId);
+              if (!peerToUpdate) return;
+              peerToUpdate.lastUpdate = performance.now();
+              
+              changes.forEach(change => {
+                  if (change.field === 'x') peerToUpdate.state.position.x = change.value;
+                  else if (change.field === 'y') peerToUpdate.state.position.y = change.value;
+                  else if (change.field === 'z') peerToUpdate.state.position.z = change.value;
+                  else if (change.field === 'rotation') peerToUpdate.state.direction = change.value;
+                  else if (change.field === 'avatarId') peerToUpdate.state.modelUrl = change.value;
+                  else if (change.field === 'isCrouching') peerToUpdate.state.isCrouching = change.value;
+                  else if (change.field === 'isProne') peerToUpdate.state.isProne = change.value;
+                  // If currentAnimation is needed, we could map it to a new field on state, but
+                  // our CharacterAnimator automatically derives animations from velocity and crouch states.
+              });
+          });
+      });
+
+      this.room.state.players.onRemove((player: any, sessionId: string) => {
+          console.log("Player left:", sessionId);
+          this.peers.delete(sessionId);
+          if (this.onPeerLeave) this.onPeerLeave(sessionId);
+      });
+
+    } catch (e: any) {
+      console.warn("Colyseus connection unavailable (waiting for Render URL):", e?.message || e);
+    }
   }
 
   public broadcastState(state: PlayerState) {
     this.lastKnownState = state;
-    this.stateAction.send(this.getSyncState(state));
+    
+    if (this.room) {
+        this.room.send("move", {
+            x: state.position.x,
+            y: state.position.y,
+            z: state.position.z,
+            rotation: state.direction,
+            avatarId: state.modelUrl,
+            currentAnimation: state.isProne ? "prone" : state.isCrouching ? "crouch" : "idle",
+            isCrouching: state.isCrouching || false,
+            isProne: state.isProne || false
+        });
+    }
   }
   
   private createEmptyState(): PlayerState {
@@ -307,20 +123,12 @@ export class NetworkManager {
          }
       }
       nearby.sort((a, b) => a.state.position.distanceTo(center) - b.state.position.distanceTo(center));
-      return nearby.slice(0, 30); // Limiting bubble rendering
+      return nearby.slice(0, 30);
   }
 
   public disconnect() {
-      if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
-      if (this.cleanupInterval) clearInterval(this.cleanupInterval);
       if (this.room) {
           this.room.leave();
-      }
-      if (typeof document !== 'undefined') {
-          document.removeEventListener('visibilitychange', this.handleVisibilityChange);
-      }
-      if (typeof window !== 'undefined') {
-          window.removeEventListener('focus', this.handleFocus);
       }
   }
 }

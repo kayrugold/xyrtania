@@ -201,8 +201,7 @@ export class CharacterAnimator {
                           normalMap: normalMap,
                           metalnessMap: metallicMap,
                           roughnessMap: roughnessMap,
-                          color: new THREE.Color(1, 1, 1),
-                          skinning: true
+                          color: new THREE.Color(1, 1, 1)
                       });
                       return newMat;
                   }
