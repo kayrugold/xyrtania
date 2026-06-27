@@ -48,28 +48,24 @@ export class NetworkManager {
           const peer = this.peers.get(sessionId)!;
           peer.state.position.set(player.x, player.y, player.z);
           peer.state.direction = player.rotation;
-          peer.state.modelUrl = player.avatarId;
+          peer.state.modelUrl = player.avatarId || '/assets/character/base_male.fbx';
           peer.state.isCrouching = player.isCrouching;
           peer.state.isProne = player.isProne;
 
           if (this.onPeerJoin) this.onPeerJoin(sessionId);
 
-          player.onChange((changes: any[]) => {
+          player.onChange(() => {
               const peerToUpdate = this.peers.get(sessionId);
               if (!peerToUpdate) return;
               peerToUpdate.lastUpdate = performance.now();
               
-              changes.forEach(change => {
-                  if (change.field === 'x') peerToUpdate.state.position.x = change.value;
-                  else if (change.field === 'y') peerToUpdate.state.position.y = change.value;
-                  else if (change.field === 'z') peerToUpdate.state.position.z = change.value;
-                  else if (change.field === 'rotation') peerToUpdate.state.direction = change.value;
-                  else if (change.field === 'avatarId') peerToUpdate.state.modelUrl = change.value;
-                  else if (change.field === 'isCrouching') peerToUpdate.state.isCrouching = change.value;
-                  else if (change.field === 'isProne') peerToUpdate.state.isProne = change.value;
-                  // If currentAnimation is needed, we could map it to a new field on state, but
-                  // our CharacterAnimator automatically derives animations from velocity and crouch states.
-              });
+              peerToUpdate.state.position.x = player.x;
+              peerToUpdate.state.position.y = player.y;
+              peerToUpdate.state.position.z = player.z;
+              peerToUpdate.state.direction = player.rotation;
+              peerToUpdate.state.modelUrl = player.avatarId || '/assets/character/base_male.fbx';
+              peerToUpdate.state.isCrouching = player.isCrouching;
+              peerToUpdate.state.isProne = player.isProne;
           });
       });
 
