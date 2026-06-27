@@ -24,16 +24,18 @@ export class NetworkManager {
   }
 
   constructor(appId: string, roomName: string) {
-    // Dynamic endpoint to connect to the current host's embedded Colyseus server
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const endpoint = `${protocol}//${host}`;
+    // Fallback to local server on localhost, otherwise connect to user's Render server
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const endpoint = isLocal 
+      ? 'ws://localhost:3000' 
+      : 'wss://xyrtania-server.onrender.com';
       
     this.client = new Client(endpoint);
     this.connectToServer();
   }
 
   private async connectToServer() {
+    this.peers.clear(); // Clear any old stale peer references from previous connections
     try {
       const room = await this.client.joinOrCreate("xyrtania_room");
       if (this.isDisconnected) {

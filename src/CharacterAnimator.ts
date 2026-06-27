@@ -230,6 +230,15 @@ export class CharacterAnimator {
           object.rotation.set(0, 0, 0); 
       }
 
+      // Safeguard against concurrent loads: clear any children that might have loaded in parallel
+      const concurrentToRemove: THREE.Object3D[] = [];
+      this.group.children.forEach(c => {
+          if (c !== this.nametagSprite) {
+              concurrentToRemove.push(c);
+          }
+      });
+      concurrentToRemove.forEach(c => this.group.remove(c));
+
       this.group.add(object);
       this.mixer = new THREE.AnimationMixer(object);
       
