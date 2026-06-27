@@ -1507,8 +1507,11 @@ export default function App() {
         if (!remAnim) {
            remAnim = new CharacterAnimator();
            scene.add(remAnim.group);
-           remAnim.loadModelAndAnimations().catch(e => console.error(e));
+           remAnim.loadModelAndAnimations(peer.state.modelUrl).catch(e => console.error(e));
            remoteAnimators.set(peerId, remAnim);
+        } else if (peer.state.modelUrl && remAnim.currentModelUrl !== peer.state.modelUrl) {
+           // Swap model on the fly if they changed characters
+           remAnim.loadModelAndAnimations(peer.state.modelUrl).catch(e => console.error(e));
         }
 
         // Interpolate visual positions smoothly
@@ -1572,6 +1575,7 @@ export default function App() {
 
         // Network Broadcast
         state.displayName = localStorage.getItem('xyrtania_display_name') || 'Anonymous';
+        state.modelUrl = animator.currentModelUrl;
         animator.updateNametag(state.displayName);
         networkManager.broadcastState(state);
 

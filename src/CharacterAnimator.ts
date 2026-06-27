@@ -24,6 +24,7 @@ export class CharacterAnimator {
   private innerMesh: THREE.Object3D | null = null;
   private baseYOffset = 0;
   public targetHeight = 2.2;
+  public currentModelUrl: string = '';
   
   constructor() {
     this.group = new THREE.Group();
@@ -31,6 +32,7 @@ export class CharacterAnimator {
   }
 
   public async loadModelAndAnimations(modelUrl: string = '/assets/character/base_male.fbx') {
+    this.currentModelUrl = modelUrl;
     // Clear old group children except nametag
     const toRemove: THREE.Object3D[] = [];
     this.group.children.forEach(c => {

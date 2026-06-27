@@ -106,7 +106,7 @@ export class NetworkManager {
     // Heartbeat ping loop (The "Hear Me" Loop)
     this.heartbeatInterval = setInterval(() => {
         if (this.lastKnownState) {
-            this.pingAction.send({ displayName: this.lastKnownState.displayName });
+            this.pingAction.send({ displayName: this.lastKnownState.displayName, modelUrl: this.lastKnownState.modelUrl });
         }
     }, 4000);
 
@@ -134,12 +134,18 @@ export class NetworkManager {
           if (data && data.displayName) {
              peer.state.displayName = data.displayName;
           }
+          if (data && data.modelUrl) {
+             peer.state.modelUrl = data.modelUrl;
+          }
           if (this.onPeerJoin) this.onPeerJoin(peerId);
       } else {
           const peer = this.peers.get(peerId)!;
           peer.lastUpdate = performance.now();
           if (data && data.displayName) {
              peer.state.displayName = data.displayName;
+          }
+          if (data && data.modelUrl) {
+             peer.state.modelUrl = data.modelUrl;
           }
       }
   }
@@ -154,6 +160,7 @@ export class NetworkManager {
   private getSyncState(state: PlayerState) {
     return {
        displayName: state.displayName,
+       modelUrl: state.modelUrl,
        position: { x: state.position.x, y: state.position.y, z: state.position.z },
        velocity: { x: state.velocity.x, y: state.velocity.y, z: state.velocity.z },
        isGrounded: state.isGrounded,
