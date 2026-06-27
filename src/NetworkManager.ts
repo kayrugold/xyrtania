@@ -100,6 +100,8 @@ export class NetworkManager {
            peer.state.jumpProgress = data.jumpProgress;
            peer.state.direction = data.direction;
            (peer.state as any).isSwimming = data.isSwimming;
+           peer.state.isCrouching = data.isCrouching;
+           peer.state.isProne = data.isProne;
        }
     };
 
@@ -169,7 +171,9 @@ export class NetworkManager {
        jumpPhase: state.jumpPhase,
        jumpProgress: state.jumpProgress,
        direction: state.direction,
-       isSwimming: (state as any).isSwimming || false
+       isSwimming: (state as any).isSwimming || false,
+       isCrouching: state.isCrouching || false,
+       isProne: state.isProne || false
     };
   }
 

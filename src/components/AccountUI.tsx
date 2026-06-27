@@ -14,9 +14,7 @@ export const AccountUI: React.FC = () => {
   const [hasCopied, setHasCopied] = useState(false);
   const [hasConfirmed, setHasConfirmed] = useState(false);
   const [isSetupComplete, setIsSetupComplete] = useState(() => {
-    const hasCompleteFlag = localStorage.getItem('xyrtania_setup_complete') === 'true';
-    const hasExistingSession = localStorage.getItem('xyrtania_auth_session') !== null;
-    return hasCompleteFlag || hasExistingSession;
+    return localStorage.getItem('xyrtania_setup_complete') === 'true';
   });
 
   useEffect(() => {
@@ -72,7 +70,7 @@ export const AccountUI: React.FC = () => {
   };
 
   return (
-    <div className="absolute top-4 right-4 z-50 pointer-events-auto flex flex-col items-end gap-2">
+    <div className={!isSetupComplete ? "fixed inset-0 z-[999999] pointer-events-auto bg-black/80 backdrop-blur-sm flex items-center justify-center" : "absolute top-4 right-4 z-50 pointer-events-auto flex flex-col items-end gap-2"}>
       {/* Background Syncing Indicator HUD */}
       {isSyncing && (
         <div className="bg-emerald-900/80 border border-emerald-500 rounded px-3 py-1 flex items-center gap-2 shadow-[0_0_10px_rgba(16,185,129,0.5)]">
@@ -104,9 +102,11 @@ export const AccountUI: React.FC = () => {
         <div className="bg-black/90 text-white p-4 sm:p-5 rounded shadow-2xl w-[90vw] sm:w-80 max-w-sm max-h-[85vh] overflow-y-auto text-sm font-mono border border-emerald-900/50 backdrop-blur-md scrollbar-thin scrollbar-thumb-gray-700">
           <div className="flex justify-between items-start mb-2 sm:mb-4 border-b border-gray-800 pb-2">
               <h2 className="text-emerald-400 font-bold">{isSetupComplete ? 'Account Settings' : 'Welcome to Xyrtania'}</h2>
-              <button onClick={() => setIsPanelOpen(false)} className="text-gray-500 hover:text-white text-xs">
-                Close [X]
-              </button>
+              {isSetupComplete && (
+                <button onClick={() => setIsPanelOpen(false)} className="text-gray-500 hover:text-white text-xs">
+                  Close [X]
+                </button>
+              )}
           </div>
           
           <div className="mb-2 sm:mb-4">
