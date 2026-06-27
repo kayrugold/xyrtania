@@ -24,6 +24,8 @@ export interface PlayerState {
   blinkTimer?: number;
   isRidingHorse?: boolean;
   isSwimming?: boolean;
+  isCrouching?: boolean;
+  isProne?: boolean;
   wetness?: number;
 }
 

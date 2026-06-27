@@ -18,21 +18,28 @@ THREE.ImageLoader.prototype.load = function(url, onLoad) {
    return {};
 };
 
-const fbxData = fs.readFileSync('public/base_male/Unarmed Idle 01.fbx');
+const fbxData = fs.readFileSync('public/assets/character/bob.fbx');
 const loader = new FBXLoader();
 try {
   const model = loader.parse(fbxData.buffer, '');
-  let skinnedMesh = null;
+  let bones = [];
+  let skinnedMeshes = [];
   model.traverse((child) => {
+    if (child.isBone) {
+       bones.push(child.name);
+    }
     if (child.isSkinnedMesh) {
-       skinnedMesh = child.name;
+       skinnedMeshes.push(child.name);
     }
   });
-  if (skinnedMesh) {
-    console.log("Found SkinnedMesh:", skinnedMesh);
-  } else {
-    console.log("No SkinnedMesh found");
-  }
+  console.log("Found Bones:", bones.slice(0, 10), "Total:", bones.length);
+  console.log("SkinnedMeshes:", skinnedMeshes);
+  console.log("Animations:", model.animations.map(a => a.name));
+  
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  console.log("Box Size:", size);
+  console.log("Model Rotation:", model.rotation);
 } catch (e) {
   console.log("ERROR parsing", e);
 }

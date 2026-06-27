@@ -2,6 +2,14 @@ import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { PlayerState, JumpPhase } from './types';
 
+export const MODEL_SCALE_CONFIG: Record<string, { targetDepth?: number; targetWidth?: number; targetHeight?: number; scaleOverride?: number }> = {
+  'bob.fbx': { targetDepth: 1.2 }, // Stylized reference (Z-depth of 54.6 scaled to 1.2)
+  'base_male.fbx': { targetDepth: 1.2 },
+  'Unarmed_Idle.fbx': { targetDepth: 1.2 },
+  'Breathing_Idle.fbx': { targetDepth: 1.2 },
+  'default': { targetDepth: 1.2 }
+};
+
 export class CharacterAnimator {
   public group: THREE.Group;
   public mixer: THREE.AnimationMixer | null = null;
@@ -13,32 +21,100 @@ export class CharacterAnimator {
   private basePrefix = '';
   private currentNametag = '';
   private nametagSprite: THREE.Sprite | null = null;
+  private innerMesh: THREE.Object3D | null = null;
+  private baseYOffset = 0;
+  public targetHeight = 2.2;
   
   constructor() {
     this.group = new THREE.Group();
     this.group.name = 'explorer';
   }
 
-  public async loadModelAndAnimations() {
+  public async loadModelAndAnimations(modelUrl: string = '/assets/character/base_male.fbx') {
+    // Clear old group children except nametag
+    const toRemove: THREE.Object3D[] = [];
+    this.group.children.forEach(c => {
+        if (c !== this.nametagSprite) {
+            toRemove.push(c);
+        }
+    });
+    toRemove.forEach(c => this.group.remove(c));
+    
+    if (this.mixer) {
+        this.mixer.stopAllAction();
+        this.mixer = null;
+    }
+    this.actions = {};
+    this.activeAction = null;
+    this.modelLoaded = false;
+    this.basePrefix = '';
+
     const fbxLoader = new FBXLoader();
     
     return new Promise<void>((resolve, reject) => {
       // First load the base mesh
-      fbxLoader.load('/base_male/neutral_idle.fbx', (object) => {
+      fbxLoader.load(modelUrl, (object) => {
         object.name = 'explorerInner';
         
-        // Auto scale to human size (~2 units tall)
+        let config = MODEL_SCALE_CONFIG['default'];
+        for (const key in MODEL_SCALE_CONFIG) {
+          if (modelUrl.includes(key)) {
+            config = MODEL_SCALE_CONFIG[key];
+            break;
+          }
+        }
+
+        // Auto scale using volumetric mass (depth/width) as a fallback rather than purely height
         const box = new THREE.Box3().setFromObject(object);
         const size = box.getSize(new THREE.Vector3());
-        const maxDim = Math.max(size.x, size.y, size.z);
-        if (maxDim > 0) {
-          const scaleAmount = 2.5 / maxDim;
-          object.scale.setScalar(scaleAmount);
-        }
         
-        // Re-calculate box after scale to adjust pivot to ground at Y=0
+        let scaleAmount = 1;
+        if (config.scaleOverride) {
+          scaleAmount = config.scaleOverride;
+        } else if (config.targetDepth && size.z > 0) {
+          // Scale by depth (Z axis) to balance torso/head mass, ignoring T-pose arm span on X
+          scaleAmount = config.targetDepth / size.z;
+        } else if (config.targetWidth && size.x > 0) {
+          // Scale by width (X axis)
+          scaleAmount = config.targetWidth / size.x;
+        } else if (config.targetHeight && size.y > 0) {
+          scaleAmount = config.targetHeight / size.y;
+        } else {
+          // Fallback depth scaling
+          scaleAmount = 1.2 / (size.z || 1);
+        }
+
+        object.scale.setScalar(scaleAmount);
+        
+        // Re-calculate box after scale to adjust pivot to ground at Y=0 and determine final real height
         const boxScaled = new THREE.Box3().setFromObject(object);
-        object.position.set(0, -boxScaled.min.y, 0);
+        const sizeScaled = boxScaled.getSize(new THREE.Vector3());
+        
+        // Ensure our targetHeight property is accurately updated so that nametags, hover items, and camera focal points are mathematically adjusted
+        this.targetHeight = sizeScaled.y;
+        if (this.nametagSprite) {
+          this.nametagSprite.position.set(0, this.targetHeight + 0.4, 0);
+        }
+
+        this.baseYOffset = -boxScaled.min.y;
+        object.position.set(0, this.baseYOffset, 0);
+        this.innerMesh = object;
+
+        const isCustomTripoModel = modelUrl.includes('humanoid') || modelUrl.includes('explorer_clone');
+        let colorMap: THREE.Texture | null = null;
+        let normalMap: THREE.Texture | null = null;
+        let metallicMap: THREE.Texture | null = null;
+        let roughnessMap: THREE.Texture | null = null;
+        
+        if (isCustomTripoModel) {
+            const basePath = modelUrl.substring(0, modelUrl.lastIndexOf('/'));
+            const textureLoader = new THREE.TextureLoader();
+            colorMap = textureLoader.load(`${basePath}/Color.png`);
+            colorMap.colorSpace = THREE.SRGBColorSpace;
+            normalMap = textureLoader.load(`${basePath}/Normal.png`);
+            metallicMap = textureLoader.load(`${basePath}/Metallic.png`);
+            roughnessMap = textureLoader.load(`${basePath}/Roughness.png`);
+        }
         
         // Find what the mesh uses for bone prefixes
         let foundBone = false;
@@ -47,6 +123,35 @@ export class CharacterAnimator {
           if (child.isMesh) {
             child.castShadow = true;
             child.receiveShadow = true;
+            if (isCustomTripoModel && child.material) {
+                const applyMaps = (mat: any) => {
+                    mat.map = colorMap;
+                    mat.normalMap = normalMap;
+                    if (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial) {
+                        mat.metalnessMap = metallicMap;
+                        mat.roughnessMap = roughnessMap;
+                        mat.color = new THREE.Color(1, 1, 1);
+                    } else if (mat.isMeshPhongMaterial) {
+                        // Upgrade to standard if it was parsed as phong
+                        const newMat = new THREE.MeshStandardMaterial({
+                            map: colorMap,
+                            normalMap: normalMap,
+                            metalnessMap: metallicMap,
+                            roughnessMap: roughnessMap,
+                            color: new THREE.Color(1, 1, 1),
+                            skinning: true // ensure skinning is preserved
+                        });
+                        return newMat;
+                    }
+                    mat.needsUpdate = true;
+                    return mat;
+                };
+                if (Array.isArray(child.material)) {
+                    child.material = child.material.map(applyMaps);
+                } else {
+                    child.material = applyMaps(child.material);
+                }
+            }
           }
            if (!foundBone && child.isBone) {
              const name = child.name;
@@ -58,18 +163,28 @@ export class CharacterAnimator {
            }
         });
         
+        if (!foundBone) {
+            console.warn("Model has no bones. Rotating to stand up.");
+            object.rotation.set(0, 0, 0); 
+        }
+
         this.group.add(object);
         this.mixer = new THREE.AnimationMixer(object);
         
         const animationsToLoad = [
-          { name: 'idle', url: '/base_male/Unarmed Idle 01.fbx' },
-          { name: 'walk', url: '/base_male/Walking.fbx' },
-          { name: 'jog', url: '/base_male/Jog Forward.fbx' },
-          { name: 'run', url: '/base_male/Running.fbx' },
-          { name: 'jump', url: '/base_male/Unarmed Jump.fbx' },
-          { name: 'pushing', url: '/base_male/Pushing.fbx' },
-          { name: 'swim', url: '/base_male/Swimming.fbx' },
-          { name: 'tread', url: '/base_male/Treading Water.fbx' },
+          { name: 'idle', url: '/assets/character/animations/idle.fbx' },
+          { name: 'walk', url: '/assets/character/animations/walk.fbx' },
+          { name: 'jog', url: '/assets/character/animations/jog.fbx' },
+          { name: 'run', url: '/assets/character/animations/run.fbx' },
+          { name: 'jump', url: '/assets/character/animations/jump.fbx' },
+          { name: 'pushing', url: '/assets/character/animations/pushing.fbx' },
+          { name: 'swim', url: '/assets/character/animations/swim.fbx' },
+          { name: 'tread', url: '/assets/character/animations/tread.fbx' },
+          { name: 'neutral_idle', url: '/assets/character/animations/neutral_idle.fbx' },
+          { name: 'climbing', url: '/assets/character/animations/climbing.fbx' },
+          { name: 'crouch_idle', url: '/assets/character/animations/crouch_idle.fbx' },
+          { name: 'crouched_walking', url: '/assets/character/animations/crouched_walking.fbx' },
+          { name: 'prone_forward', url: '/assets/character/animations/prone_forward.fbx' },
         ];
         
         let loadedCount = 0;
@@ -126,7 +241,19 @@ export class CharacterAnimator {
           });
         });
 
-      }, undefined, reject);
+      }, undefined, (err) => {
+        console.error('Error loading base mesh', err);
+        // Fallback placeholder mesh if the FBX is corrupted
+        const geo = new THREE.CapsuleGeometry(0.5, 1, 4, 16);
+        const mat = new THREE.MeshStandardMaterial({ color: 0xff4444 });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.y = 1;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        this.group.add(mesh);
+        this.modelLoaded = true; // Mark as loaded so it renders the fallback
+        resolve();
+      });
     });
   }
 
@@ -146,8 +273,10 @@ export class CharacterAnimator {
     if (name === 'jump') {
         nextAction.time = 0.4;
         nextAction.setEffectiveTimeScale(1.5);
+        nextAction.timeScale = 1.0;
     } else {
         nextAction.setEffectiveTimeScale(1.0);
+        nextAction.timeScale = 1.0;
     }
     
     nextAction.fadeIn(duration);
@@ -162,11 +291,11 @@ export class CharacterAnimator {
 
     if (!this.nametagSprite) {
         this.nametagSprite = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false }));
-        // Put text above head, scale should map to canvas aspect ratio
-        this.nametagSprite.position.set(0, 2.6, 0); 
-        this.nametagSprite.scale.set(1.5, 0.4, 1);
         this.group.add(this.nametagSprite);
     }
+    // Put text above head, scale should map to canvas aspect ratio
+    this.nametagSprite.position.set(0, this.targetHeight + 0.4, 0); 
+    this.nametagSprite.scale.set(1.5, 0.4, 1);
 
     const canvas = document.createElement('canvas');
     canvas.width = 512;
@@ -205,15 +334,64 @@ export class CharacterAnimator {
       this.mixer.update(dt);
     }
     
+    if (this.innerMesh) {
+       // Fix sideways swimming animation
+       // const isSwimAnim = this.activeAction?.getClip().name === 'swim' || this.activeAction?.getClip().name === 'tread';
+       // const targetRotY = isSwimAnim ? -Math.PI / 2 : 0;
+       // this.innerMesh.rotation.y = THREE.MathUtils.lerp(this.innerMesh.rotation.y, targetRotY, dt * 10);
+       this.innerMesh.rotation.y = 0;
+       
+       const isProne = (state as any).isProne || false;
+       const isCrouching = (state as any).isCrouching || false;
+       
+       let targetY = this.baseYOffset;
+       let targetRotX = 0;
+       if (isProne) {
+           targetY = this.baseYOffset - 0.60;
+       } else if (isCrouching) {
+           // Lower slightly more and tilt forward so heels touch ground
+           // If moving, don't lower as much to avoid clipping into the ground
+           targetY = this.baseYOffset - (state.speed > 0.1 ? 0.20 : 0.35);
+           targetRotX = 0.12; 
+       }
+       
+       this.innerMesh.position.y = THREE.MathUtils.lerp(this.innerMesh.position.y, targetY, dt * 10);
+       this.innerMesh.rotation.x = THREE.MathUtils.lerp(this.innerMesh.rotation.x, targetRotX, dt * 10);
+    }
+
     if (!this.modelLoaded) return;
     
     const isSwimming = (state as any).isSwimming || false;
+    const isCrouching = (state as any).isCrouching || false;
+    const isProne = (state as any).isProne || false;
 
     if (isSwimming) {
       if (state.speed > 0.1) {
         this.playAction('swim');
       } else {
         this.playAction('tread');
+      }
+      return;
+    }
+
+    if (isProne) {
+      this.playAction('prone_forward');
+      if (this.activeAction) {
+         // Pause animation if not moving
+         if (state.speed > 0.1) {
+            this.activeAction.timeScale = 1.0;
+         } else {
+            this.activeAction.timeScale = 0.0;
+         }
+      }
+      return;
+    }
+
+    if (isCrouching) {
+      if (state.speed > 0.1) {
+        this.playAction('crouched_walking');
+      } else {
+        this.playAction('crouch_idle');
       }
       return;
     }
@@ -230,7 +408,7 @@ export class CharacterAnimator {
       } else if (state.speed > 0.1) {
         this.playAction('walk');
       } else {
-        this.playAction('idle');
+        this.playAction('neutral_idle');
       }
     }
   }

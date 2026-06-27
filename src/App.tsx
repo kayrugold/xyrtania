@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'; // Trigger file watcher
 import * as THREE from 'three';
+import { Maximize } from 'lucide-react';
 import { WorldGrid } from './WorldGrid';
 import { PlayerState, JumpPhase } from './types';
 import { CharacterAnimator } from './CharacterAnimator';
@@ -31,6 +32,7 @@ export default function App() {
 
   // References to invoke in-game actions from absolute HTML DOM target elements
   const triggerJumpRef = useRef<() => void>(() => {});
+  const switchCharacterRef = useRef<() => void>(() => {});
 
   // Fullscreen support state detection
   useEffect(() => {
@@ -310,34 +312,98 @@ export default function App() {
     jumpButton.name = 'btn_jump';
 
     // Outer backing golden ring
-    const btnOuter = new THREE.Mesh(new THREE.RingGeometry(52, 58, 32), hudMaterials.gold);
+    const btnOuter = new THREE.Mesh(new THREE.RingGeometry(32, 38, 32), hudMaterials.gold);
     btnOuter.position.z = 1;
     jumpButton.add(btnOuter);
 
     // Touch circular interaction zone plane
-    const btnInner = new THREE.Mesh(new THREE.CircleGeometry(48, 32), hudMaterials.darkGrey);
+    const btnInner = new THREE.Mesh(new THREE.CircleGeometry(30, 32), hudMaterials.darkGrey);
     btnInner.position.z = 0;
     jumpButton.add(btnInner);
 
     // Generous transparent touch hit target (Industry standard)
     const btnHitArea = new THREE.Mesh(
-      new THREE.CircleGeometry(90, 16),
+      new THREE.CircleGeometry(60, 16),
       new THREE.MeshBasicMaterial({ depthTest: false, transparent: true, opacity: 0 })
     );
     btnHitArea.position.z = -1;
     jumpButton.add(btnHitArea);
 
     // Stylized Up Arrow indicators inside button
-    const arrowStem = new THREE.Mesh(new THREE.PlaneGeometry(12, 28), hudMaterials.gold);
-    arrowStem.position.set(0, -6, 2);
+    const arrowStem = new THREE.Mesh(new THREE.PlaneGeometry(6, 16), hudMaterials.gold);
+    arrowStem.position.set(0, -3, 2);
     jumpButton.add(arrowStem);
 
-    const arrowTip = new THREE.Mesh(new THREE.ConeGeometry(18, 20, 3), hudMaterials.gold);
-    arrowTip.position.set(0, 14, 2);
+    const arrowTip = new THREE.Mesh(new THREE.ConeGeometry(10, 12, 3), hudMaterials.gold);
+    arrowTip.position.set(0, 8, 2);
     arrowTip.rotation.z = Math.PI / 2; // point up relative to cone coordinates
     jumpButton.add(arrowTip);
 
     hudElementsGroup.add(jumpButton);
+
+    // (C-2) CROUCH BUTTON
+    const crouchButton = new THREE.Group();
+    crouchButton.name = 'btn_crouch';
+
+    const cbOuter = new THREE.Mesh(new THREE.RingGeometry(18, 22, 32), hudMaterials.gold);
+    cbOuter.position.z = 1;
+    crouchButton.add(cbOuter);
+
+    const cbInner = new THREE.Mesh(new THREE.CircleGeometry(16, 32), hudMaterials.darkGrey);
+    cbInner.position.z = 0;
+    crouchButton.add(cbInner);
+
+    const cbHitArea = new THREE.Mesh(
+      new THREE.CircleGeometry(40, 16),
+      new THREE.MeshBasicMaterial({ depthTest: false, transparent: true, opacity: 0 })
+    );
+    cbHitArea.position.z = -1;
+    crouchButton.add(cbHitArea);
+
+    const crouchStem = new THREE.Mesh(new THREE.PlaneGeometry(5, 12), hudMaterials.gold);
+    crouchStem.position.set(0, 3, 2);
+    crouchButton.add(crouchStem);
+
+    const crouchTip = new THREE.Mesh(new THREE.ConeGeometry(8, 8, 3), hudMaterials.gold);
+    crouchTip.position.set(0, -5, 2);
+    crouchTip.rotation.z = -Math.PI / 2; // point down
+    crouchButton.add(crouchTip);
+
+    hudElementsGroup.add(crouchButton);
+
+    // (C-3) PRONE BUTTON
+    const proneButton = new THREE.Group();
+    proneButton.name = 'btn_prone';
+
+    const pbOuter = new THREE.Mesh(new THREE.RingGeometry(18, 22, 32), hudMaterials.gold);
+    pbOuter.position.z = 1;
+    proneButton.add(pbOuter);
+
+    const pbInner = new THREE.Mesh(new THREE.CircleGeometry(16, 32), hudMaterials.darkGrey);
+    pbInner.position.z = 0;
+    proneButton.add(pbInner);
+
+    const pbHitArea = new THREE.Mesh(
+      new THREE.CircleGeometry(40, 16),
+      new THREE.MeshBasicMaterial({ depthTest: false, transparent: true, opacity: 0 })
+    );
+    pbHitArea.position.z = -1;
+    proneButton.add(pbHitArea);
+
+    const proneLine = new THREE.Mesh(new THREE.PlaneGeometry(12, 3), hudMaterials.gold);
+    proneLine.position.set(0, -6, 2);
+    proneButton.add(proneLine);
+
+    const proneStem = new THREE.Mesh(new THREE.PlaneGeometry(5, 8), hudMaterials.gold);
+    proneStem.position.set(0, 2, 2);
+    proneButton.add(proneStem);
+
+    const proneTip = new THREE.Mesh(new THREE.ConeGeometry(8, 8, 3), hudMaterials.gold);
+    proneTip.position.set(0, -3, 2);
+    proneTip.rotation.z = -Math.PI / 2; // point down
+    proneButton.add(proneTip);
+
+    hudElementsGroup.add(proneButton);
 
     // (E) TEXT GRAPHIC NOTICES IN WEBGL (Simple UI guide plates constructed out of meshes)
     const noticePlate = new THREE.Group();
@@ -357,7 +423,8 @@ export default function App() {
     controlGuideLine.position.y = -8;
     noticePlate.add(controlGuideLine);
 
-    hudElementsGroup.add(noticePlate);
+    // hudElementsGroup.add(noticePlate); // REMOVED BY USER REQUEST
+
 
 
     // (F) WEBGL FULLSCREEN BUTTON drawn directly to the canvas using primitives
@@ -448,13 +515,15 @@ export default function App() {
       // Reposition all HUD group elements elegantly relative to anchors
       healthContainer.position.set(-w / 2 + 130, h / 2 - 45, 0);
       compassSystem.position.set(0, h / 2 - 55, 0);
-      jumpButton.position.set(w / 2 - 95, -h / 2 + 95, 0);
+      jumpButton.position.set(w / 2 - 45, -h / 2 + 45, 0);
+      crouchButton.position.set(w / 2 - 100, -h / 2 + 30, 0);
+      proneButton.position.set(w / 2 - 70, -h / 2 + 90, 0);
       
       // Make fullscreen a tiny button at the top right
       fullscreenButton.position.set(w / 2 - 35, h / 2 - 35, 0);
       fullscreenButton.scale.set(0.42, 0.42, 0.42);
       
-      noticePlate.position.set(0, -h / 2 + 30, 0);
+      noticePlate.visible = false;
     };
     window.addEventListener('resize', layoutUI);
     // Initial dynamic layout binding
@@ -487,6 +556,23 @@ export default function App() {
       if (keys[k]) return; // Stop repeating keydown auto-repeat
       keys[k] = true;
 
+      // Character Switch
+      if (k === 'c') {
+        switchCharacter();
+      }
+
+      // Crouch
+      if (k === 'control') {
+        state.isCrouching = !state.isCrouching;
+        if (state.isCrouching) state.isProne = false;
+      }
+
+      // Prone (Z key)
+      if (k === 'z') {
+        state.isProne = !state.isProne;
+        if (state.isProne) state.isCrouching = false;
+      }
+
       // Space Trigger JUMP
       if (e.key === ' ' || e.code === 'Space') {
         initiateJump();
@@ -498,9 +584,24 @@ export default function App() {
     window.addEventListener('keydown', keyPressHandler);
     window.addEventListener('keyup', keyReleaseHandler);
 
+    const characters = [
+      '/assets/character/base_male.fbx', 
+      '/assets/character/bob.fbx',
+      '/assets/character/humanoid/Unarmed_Idle.fbx',
+      '/assets/character/explorer_clone/Breathing_Idle.fbx'
+    ];
+    let currentCharacterIndex = 0;
+
+    function switchCharacter() {
+        currentCharacterIndex = (currentCharacterIndex + 1) % characters.length;
+        animator.loadModelAndAnimations(characters[currentCharacterIndex]).catch(e => console.error('Error switching character:', e));
+    }
+
     function initiateJump() {
       // Allow jump if player is on the ground
       if (state.isGrounded && state.jumpPhase !== JumpPhase.PREP) {
+        state.isCrouching = false;
+        state.isProne = false;
         state.jumpPhase = JumpPhase.PREP;
         state.jumpProgress = 0;
 
@@ -511,6 +612,7 @@ export default function App() {
 
     // Connect refs to make these actions callable from the outer React DOM HUD
     triggerJumpRef.current = initiateJump;
+    switchCharacterRef.current = switchCharacter;
 
     // Split-screen touch/mouse active tracking states
     let moveActive = false;
@@ -552,6 +654,18 @@ export default function App() {
             initiateJump();
             jumpActive = true;
             jumpTouchId = touchId;
+            buttonHit = true;
+            break;
+          }
+          if (parent.name === 'btn_crouch') {
+            state.isCrouching = !state.isCrouching;
+            if (state.isCrouching) state.isProne = false;
+            buttonHit = true;
+            break;
+          }
+          if (parent.name === 'btn_prone') {
+            state.isProne = !state.isProne;
+            if (state.isProne) state.isCrouching = false;
             buttonHit = true;
             break;
           }
@@ -748,6 +862,9 @@ export default function App() {
     let smoothedKeyboardX = 0;
     let smoothedKeyboardZ = 0;
     let prevGamepadJump = false;
+    let prevGamepadCrouch = false;
+    let gamepadCrouchPressTime = 0;
+    let gamepadCrouchHoldTriggered = false;
 
     const gameLoop = () => {
       frameId = requestAnimationFrame(gameLoop);
@@ -759,6 +876,8 @@ export default function App() {
       
       // Update HUD visibility based on current input mode
       jumpButton.visible = isTouchMode;
+      crouchButton.visible = isTouchMode;
+      proneButton.visible = isTouchMode;
       fullscreenButton.visible = isTouchMode;
 
       // Keyboard camera turning
@@ -779,6 +898,7 @@ export default function App() {
       if (keys['d'] || keys['arrowright']) targetKeyboardX += 1;
 
       let gamepadJump = false;
+      let gamepadCrouch = false;
 
       // --- GAMEPAD SUPPORT ---
       const gamepads = navigator.getGamepads ? Array.from(navigator.getGamepads()) : [];
@@ -825,13 +945,18 @@ export default function App() {
             if (gpCy !== 0) cameraPitch = Math.max(-1.4, Math.min(1.4, cameraPitch + gpCy * 2.0 * dt));
         }
 
-        // A button (index 0 usually) or Cross button for jump
-        if (gp.buttons[0] && gp.buttons[0].pressed) {
+        // Button 1 (index 1) for jump
+        if (gp.buttons[1] && gp.buttons[1].pressed) {
             gamepadJump = true;
         }
 
+        // Button 11 (index 11) for crouch/prone
+        if (gp.buttons[11] && gp.buttons[11].pressed) {
+            gamepadCrouch = true;
+        }
+
         const debugEl = document.getElementById('gamepad-debug');
-        if (debugEl && (gpDx !== 0 || gpDz !== 0 || gp.axes[2] !== 0 || gp.axes[3] !== 0 || gamepadJump)) {
+        if (debugEl && (gpDx !== 0 || gpDz !== 0 || gp.axes[2] !== 0 || gp.axes[3] !== 0 || gamepadJump || gamepadCrouch)) {
             debugEl.innerText = `${gp.id.substring(0, 15)}...\nL(${gp.axes[0]?.toFixed(2)}, ${gp.axes[1]?.toFixed(2)}) R(${gp.axes[2]?.toFixed(2)}, ${gp.axes[3]?.toFixed(2)})\nBtns: ${gp.buttons.map((b, i) => b.pressed ? i : -1).filter(i => i >= 0).join(',')}`;
         }
       }
@@ -840,6 +965,38 @@ export default function App() {
           initiateJump();
       }
       prevGamepadJump = gamepadJump;
+
+      if (gamepadCrouch && !prevGamepadCrouch) {
+          gamepadCrouchPressTime = currentTime;
+          gamepadCrouchHoldTriggered = false;
+      }
+      
+      if (gamepadCrouch && prevGamepadCrouch) {
+          const holdDuration = currentTime - gamepadCrouchPressTime;
+          if (holdDuration > 400 && !gamepadCrouchHoldTriggered) {
+              gamepadCrouchHoldTriggered = true;
+              if (state.isProne) {
+                  state.isProne = false;
+                  state.isCrouching = false;
+              } else {
+                  state.isProne = true;
+                  state.isCrouching = false;
+              }
+          }
+      }
+      
+      if (!gamepadCrouch && prevGamepadCrouch) {
+          if (!gamepadCrouchHoldTriggered) {
+              if (state.isProne) {
+                  state.isProne = false;
+                  state.isCrouching = true;
+              } else {
+                  state.isCrouching = !state.isCrouching;
+                  if (state.isCrouching) state.isProne = false;
+              }
+          }
+      }
+      prevGamepadCrouch = gamepadCrouch;
 
       // Normalize target keyboard vectors to prevent diagonal speed boost
       // Only normalize if it's from keyboard (not analog gamepad which shouldn't be forced to 1.0 length unless > 1)
@@ -921,7 +1078,14 @@ export default function App() {
       // We want walk -> jog -> run, so we use a low acceleration factor when running
       // so the player naturally transitions through the animation thresholds.
       const isSwimmingNow = (state as any).isSwimming || false;
-      const baseSpeed = isSwimmingNow ? 8 : 18;
+      const isCrouchingNow = state.isCrouching || false;
+      const isProneNow = state.isProne || false;
+      
+      let baseSpeed = 18;
+      if (isSwimmingNow) baseSpeed = 8;
+      else if (isProneNow) baseSpeed = 2;
+      else if (isCrouchingNow) baseSpeed = 4.5;
+      
       const targetSpeed = baseSpeed * speedScale;
       // Start out slower, accelerate slowly
       let accelFactor = isSwimmingNow ? 3 : 6.0; 
@@ -974,8 +1138,9 @@ export default function App() {
       
       if (isSwimmingNow) {
         // Update player pitch to match velocity
-        const speed = state.velocity.length() || 0.1;
-        const pitchTarget = Math.asin(Math.max(-1, Math.min(1, -state.velocity.y / speed)));
+        const totalSpeed = state.velocity.length() || 0.1;
+        // Only pitch if we're actively moving, otherwise stay horizontally stable for tread animation
+        const pitchTarget = state.speed > 0.2 ? Math.asin(Math.max(-1, Math.min(1, -state.velocity.y / totalSpeed))) : 0;
         playerRootGroup.rotation.x = THREE.MathUtils.lerp(playerRootGroup.rotation.x, pitchTarget, dt * 5);
 
         // Spacebar or jump button to ascend to surface
@@ -1285,11 +1450,14 @@ export default function App() {
       }
 
       // Keep orbital focus locked on explorer chest height
-      const focalPoint = state.position.clone().add(new THREE.Vector3(0, 1.4, 0));
+      const heightScale = animator.targetHeight / 2.2;
+      const focalPointHeight = animator.targetHeight * 0.65;
+      const focalPoint = state.position.clone().add(new THREE.Vector3(0, focalPointHeight, 0));
 
       // Calculate dynamic distance: Zoom in when looking up or down
       const pitchRatio = Math.abs(cameraPitch) / 1.4;
-      const currentCamDist = baseCameraDistance - (3.8 * pitchRatio);
+      const scaledBaseDistance = baseCameraDistance * heightScale;
+      const currentCamDist = scaledBaseDistance - ((3.8 * heightScale) * pitchRatio);
 
       const dynamicOffset = new THREE.Vector3(
         currentCamDist * Math.sin(cameraYaw) * Math.cos(cameraPitch),
@@ -1488,12 +1656,12 @@ export default function App() {
       
       {/* Gamepad Connection Overlay */}
       {gamepadName && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/60 border border-cyan-500/30 backdrop-blur text-cyan-400 px-4 py-1.5 rounded-full text-xs font-mono tracking-wider z-50 pointer-events-none flex flex-col items-center gap-2">
-           <div className="flex items-center gap-2">
-             <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></div>
+        <div className="absolute bottom-4 left-4 bg-black/60 border border-cyan-500/30 backdrop-blur text-cyan-400 px-3 py-1 rounded text-[10px] font-mono tracking-wider z-50 pointer-events-none flex flex-col items-start gap-1">
+           <div className="flex items-center gap-1.5">
+             <div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></div>
              {gamepadName}
            </div>
-           <div id="gamepad-debug" className="text-[10px] text-cyan-200/70 whitespace-pre"></div>
+           <div id="gamepad-debug" className="text-[9px] text-cyan-200/70 whitespace-pre"></div>
         </div>
       )}
 
@@ -1531,6 +1699,33 @@ export default function App() {
         >
           <div className="w-3" style={{ borderTop: '2px solid rgba(255, 255, 255, 0.45)' }}></div>
         </div>
+      </div>
+
+      {/* HUD UI Elements */}
+      <div className="absolute top-4 right-4 z-50 flex gap-2 items-center">
+        <button
+          onClick={() => {
+            if (!document.fullscreenElement) {
+              document.documentElement.requestFullscreen().catch((err) => {
+                console.error(`Error attempting to enable full-screen mode: ${err.message}`);
+              });
+            } else {
+              if (document.exitFullscreen) {
+                document.exitFullscreen();
+              }
+            }
+          }}
+          className="bg-black/60 border border-cyan-500/30 text-cyan-400 p-2 rounded hover:bg-black/80 transition-colors backdrop-blur pointer-events-auto flex items-center justify-center"
+          title="Toggle Fullscreen"
+        >
+          <Maximize className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => switchCharacterRef.current()}
+          className="bg-black/60 border border-cyan-500/30 text-cyan-400 px-4 py-2 rounded font-mono text-sm uppercase hover:bg-black/80 transition-colors backdrop-blur pointer-events-auto"
+        >
+          Switch Character (C)
+        </button>
       </div>
 
       {/* Main Viewport Content - WebGL Canvas inside the underlaid layout */}
