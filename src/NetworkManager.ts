@@ -22,7 +22,7 @@ export class NetworkManager {
     // Dynamic endpoint fallback for development vs production
     const endpoint = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
       ? 'ws://localhost:2567' 
-      : 'wss://' + window.location.host;
+      : 'wss://xyrtania-server.onrender.com';
       
     this.client = new Client(endpoint);
     this.connectToServer();
@@ -80,7 +80,7 @@ export class NetworkManager {
       });
 
     } catch (e: any) {
-      console.warn("Colyseus connection unavailable (waiting for Render URL):", e?.message || e);
+      console.warn("Colyseus connection unavailable:", e?.message || e);
     }
   }
 
