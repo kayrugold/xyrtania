@@ -9,12 +9,12 @@ export interface RemotePlayer {
 }
 
 export class NetworkManager {
-  private room: Room;
+  private room!: Room;
   public peers: Map<string, RemotePlayer> = new Map();
   
-  private stateAction: MessageAction<any>;
-  private pingAction: MessageAction<any>;
-  private ackAction: MessageAction<any>;
+  private stateAction!: MessageAction<any>;
+  private pingAction!: MessageAction<any>;
+  private ackAction!: MessageAction<any>;
   
   public onPeerJoin?: (id: string) => void;
   public onPeerLeave?: (id: string) => void;
@@ -23,10 +23,118 @@ export class NetworkManager {
   
   private heartbeatInterval: any;
   private cleanupInterval: any;
+  
+  private appId: string;
+  private roomName: string;
+  private isReconnecting = false;
 
   constructor(appId: string, roomName: string) {
+    this.appId = appId;
+    this.roomName = roomName;
+    
+    this.initRoom();
+
+    // Heartbeat ping loop (The "Hear Me" Loop)
+    this.heartbeatInterval = setInterval(() => {
+        if (this.lastKnownState && !this.isReconnecting) {
+            try {
+                this.pingAction.send({ displayName: this.lastKnownState.displayName, modelUrl: this.lastKnownState.modelUrl });
+            } catch (e) {
+                console.warn('Ping failed, scheduling reconnect...', e);
+                this.reconnect();
+            }
+        }
+    }, 4000);
+
+    // Stale peer cleanup loop
+    this.cleanupInterval = setInterval(() => {
+        const now = performance.now();
+        for (const [peerId, peer] of this.peers.entries()) {
+            if (now - peer.lastUpdate > 12000) {
+                console.log(`Peer stale, cleaning up: ${peerId}`);
+                this.removePeer(peerId);
+            }
+        }
+    }, 5000);
+
+    this.handleVisibilityChange = this.handleVisibilityChange.bind(this);
+    this.handleFocus = this.handleFocus.bind(this);
+    
+    if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    }
+    if (typeof window !== 'undefined') {
+        window.addEventListener('focus', this.handleFocus);
+    }
+  }
+
+  private handleVisibilityChange() {
+      if (document.visibilityState === 'visible') {
+          this.checkConnection();
+      }
+  }
+
+  private handleFocus() {
+      this.checkConnection();
+  }
+
+  private checkConnection() {
+      if (this.isReconnecting) return;
+      
+      const now = performance.now();
+      let hasActivePeers = false;
+      for (const peer of this.peers.values()) {
+          if (now - peer.lastUpdate < 10000) {
+              hasActivePeers = true;
+              break;
+          }
+      }
+
+      try {
+          if (this.lastKnownState) {
+              this.pingAction.send({ displayName: this.lastKnownState.displayName, modelUrl: this.lastKnownState.modelUrl });
+          }
+      } catch (e) {
+          console.log('Socket explicitly dead on focus check. Reconnecting...', e);
+          this.reconnect();
+          return;
+      }
+
+      if (!hasActivePeers && this.peers.size > 0) {
+          console.log('Tab became visible/focused but peers are stale. Reconnecting...');
+          this.reconnect();
+      } else {
+          console.log('Tab focused, connection seems alive. Skipped reconnect.');
+      }
+  }
+
+  private reconnect() {
+      if (this.isReconnecting) return;
+      this.isReconnecting = true;
+      console.log('Triggering silent background network reconnection...');
+      
+      try {
+          if (this.room) {
+              this.room.leave();
+          }
+      } catch (e) {
+          console.warn('Error leaving room during reconnect', e);
+      }
+      
+      this.peers.clear(); // Flush stale peers
+      
+      setTimeout(() => {
+          this.initRoom();
+          this.isReconnecting = false;
+          if (this.lastKnownState) {
+              this.broadcastState(this.lastKnownState); // Re-broadcast our presence
+          }
+      }, 1000); // Brief delay to ensure sockets are fully closed
+  }
+
+  private initRoom() {
     const config = {
-      appId,
+      appId: this.appId,
       rtcConfig: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
@@ -50,7 +158,7 @@ export class NetworkManager {
         ]
       }
     };
-    this.room = joinRoom(config, roomName);
+    this.room = joinRoom(config, this.roomName);
     
     this.room.onPeerJoin = (peerId) => {
       console.log(`Peer joined (Trystero event): ${peerId}`);
@@ -104,24 +212,6 @@ export class NetworkManager {
            peer.state.isProne = data.isProne;
        }
     };
-
-    // Heartbeat ping loop (The "Hear Me" Loop)
-    this.heartbeatInterval = setInterval(() => {
-        if (this.lastKnownState) {
-            this.pingAction.send({ displayName: this.lastKnownState.displayName, modelUrl: this.lastKnownState.modelUrl });
-        }
-    }, 4000);
-
-    // Stale peer cleanup loop
-    this.cleanupInterval = setInterval(() => {
-        const now = performance.now();
-        for (const [peerId, peer] of this.peers.entries()) {
-            if (now - peer.lastUpdate > 12000) {
-                console.log(`Peer stale, cleaning up: ${peerId}`);
-                this.removePeer(peerId);
-            }
-        }
-    }, 5000);
   }
 
   private handlePresence(peerId: string, data: any) {
@@ -212,6 +302,12 @@ export class NetworkManager {
       if (this.cleanupInterval) clearInterval(this.cleanupInterval);
       if (this.room) {
           this.room.leave();
+      }
+      if (typeof document !== 'undefined') {
+          document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+      }
+      if (typeof window !== 'undefined') {
+          window.removeEventListener('focus', this.handleFocus);
       }
   }
 }
