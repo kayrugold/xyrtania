@@ -17,7 +17,9 @@ export function useCryptoAuth() {
     if (savedName) {
       setDisplayName(savedName);
     } else {
-      setDisplayName('Anonymous ' + Math.floor(Math.random() * 1000));
+      const generated = 'Anonymous ' + Math.floor(Math.random() * 1000);
+      setDisplayName(generated);
+      localStorage.setItem('xyrtania_display_name', generated);
     }
 
     // Attempt to fetch fresh identity from the server

@@ -177,14 +177,26 @@ export class CharacterAnimator {
     const fbxLoader = new FBXLoader();
     
     try {
-      // First load the base mesh using cache
-      const cachedObject = await CharacterAnimator.getModel(modelUrl);
+      // First load the base mesh using cache, with a robust fallback to base_male.fbx
+      let cachedObject: THREE.Group;
+      try {
+        cachedObject = await CharacterAnimator.getModel(modelUrl);
+      } catch (loadErr) {
+        console.warn(`Failed to load requested model ${modelUrl}, falling back to base_male.fbx`, loadErr);
+        if (modelUrl !== '/assets/character/base_male.fbx') {
+          this.currentModelUrl = '/assets/character/base_male.fbx';
+          cachedObject = await CharacterAnimator.getModel('/assets/character/base_male.fbx');
+        } else {
+          throw loadErr;
+        }
+      }
+
       const object = SkeletonUtils.clone(cachedObject) as THREE.Group;
       object.name = 'explorerInner';
       
       let config = MODEL_SCALE_CONFIG['default'];
       for (const key in MODEL_SCALE_CONFIG) {
-        if (modelUrl.includes(key)) {
+        if (this.currentModelUrl.includes(key)) {
           config = MODEL_SCALE_CONFIG[key];
           break;
         }
@@ -207,7 +219,7 @@ export class CharacterAnimator {
         scaleAmount = 1.2 / (size.z || 1);
       }
 
-      if (modelUrl.includes('base_male_0')) {
+      if (this.currentModelUrl.includes('base_male_0')) {
         // Broaden width (X) and increase depth (Z) to match the explorer's robust bulk and chest depth
         object.scale.set(scaleAmount * 1.35, scaleAmount, scaleAmount * 1.55);
       } else {
@@ -224,37 +236,43 @@ export class CharacterAnimator {
 
       this.baseYOffset = -boxScaled.min.y;
       object.position.set(0, this.baseYOffset, 0);
+      
+      // Apply base standing corrective rotation for custom models that default to horizontal/lying down orientation
+      if (this.currentModelUrl.includes('humanoid') || this.currentModelUrl.includes('explorer_clone')) {
+        object.rotation.x = -Math.PI / 2;
+      }
+      
       this.innerMesh = object;
 
-      const isGltf = modelUrl.toLowerCase().endsWith('.glb') || modelUrl.toLowerCase().endsWith('.gltf') || modelUrl.includes('.glb') || modelUrl.includes('.gltf');
-      const isCustomTripoModel = !isGltf && (modelUrl.includes('humanoid') || modelUrl.includes('explorer_clone') || modelUrl.includes('base_male_0'));
+      const isGltf = this.currentModelUrl.toLowerCase().endsWith('.glb') || this.currentModelUrl.toLowerCase().endsWith('.gltf') || this.currentModelUrl.includes('.glb') || this.currentModelUrl.includes('.gltf');
+      const isCustomTripoModel = !isGltf && (this.currentModelUrl.includes('humanoid') || this.currentModelUrl.includes('explorer_clone') || this.currentModelUrl.includes('base_male_0'));
       let colorMap: THREE.Texture | null = null;
       let normalMap: THREE.Texture | null = null;
       let metallicMap: THREE.Texture | null = null;
       let roughnessMap: THREE.Texture | null = null;
       
       if (isCustomTripoModel) {
-          const basePath = modelUrl.substring(0, modelUrl.lastIndexOf('/'));
+          const basePath = this.currentModelUrl.substring(0, this.currentModelUrl.lastIndexOf('/'));
           try {
               colorMap = await CharacterAnimator.getTexture(`${basePath}/Color.png`);
               colorMap.colorSpace = THREE.SRGBColorSpace;
           } catch (e) {
-              console.warn(`Could not load color map for ${modelUrl}:`, e);
+              console.warn(`Could not load color map for ${this.currentModelUrl}:`, e);
           }
           try {
               normalMap = await CharacterAnimator.getTexture(`${basePath}/Normal.png`);
           } catch (e) {
-              console.warn(`Could not load normal map for ${modelUrl}:`, e);
+              console.warn(`Could not load normal map for ${this.currentModelUrl}:`, e);
           }
           try {
               metallicMap = await CharacterAnimator.getTexture(`${basePath}/Metallic.png`);
           } catch (e) {
-              console.warn(`Could not load metallic map for ${modelUrl}:`, e);
+              console.warn(`Could not load metallic map for ${this.currentModelUrl}:`, e);
           }
           try {
               roughnessMap = await CharacterAnimator.getTexture(`${basePath}/Roughness.png`);
           } catch (e) {
-              console.warn(`Could not load roughness map for ${modelUrl}:`, e);
+              console.warn(`Could not load roughness map for ${this.currentModelUrl}:`, e);
           }
       }
       
@@ -316,7 +334,7 @@ export class CharacterAnimator {
                       return newMat;
                   }
                   return new THREE.MeshStandardMaterial({
-                      color: modelUrl.includes('female') ? 0xfecdd3 : 0xbae6fd, // Soft pink for female, soft blue for male
+                      color: this.currentModelUrl.includes('female') ? 0xfecdd3 : 0xbae6fd, // Soft pink for female, soft blue for male
                       roughness: 0.6,
                       metalness: 0.1,
                   });
@@ -358,7 +376,7 @@ export class CharacterAnimator {
       this.group.add(object);
       this.mixer = new THREE.AnimationMixer(object);
       
-      const animationsToLoad = [
+      let animationsToLoad = [
         { name: 'idle', url: '/assets/character/animations/idle.fbx' },
         { name: 'walk', url: '/assets/character/animations/walk.fbx' },
         { name: 'jog', url: '/assets/character/animations/jog.fbx' },
@@ -374,6 +392,14 @@ export class CharacterAnimator {
         { name: 'prone_forward', url: '/assets/character/animations/prone_forward.fbx' },
         { name: 'breathing_idle', url: '/assets/character/animations/breathing_idle.fbx' },
       ];
+
+      if (this.currentModelUrl.includes('humanoid')) {
+        const customIdleUrl = '/assets/character/humanoid/Unarmed_Idle.fbx';
+        animationsToLoad = animationsToLoad.map(a => ({ name: a.name, url: customIdleUrl }));
+      } else if (this.currentModelUrl.includes('explorer_clone')) {
+        const customIdleUrl = '/assets/character/explorer_clone/Breathing_Idle.fbx';
+        animationsToLoad = animationsToLoad.map(a => ({ name: a.name, url: customIdleUrl }));
+      }
       
       await Promise.all(animationsToLoad.map(async (anim) => {
         try {
@@ -383,24 +409,27 @@ export class CharacterAnimator {
             const tracks = animObject.animations[0].tracks.map(t => t.clone());
             const clip = new THREE.AnimationClip(anim.name, animObject.animations[0].duration, tracks);
             
+            const isCustomAnim = anim.url.includes('humanoid') || anim.url.includes('explorer_clone');
             clip.tracks.forEach((track) => {
-               track.name = track.name.replace(/^(mixamorig[a-zA-Z0-9_]*:|mixamorig\d*)/, this.basePrefix);
-               if (this.basePrefix === '' && track.name.includes(':')) {
-                  track.name = track.name.replace(/^.*:/, ''); 
-               }
-               if (track.name.includes('Hips.position') && track.values.length >= 3) {
-                  const diffX = meshHipsRestingPosition.x - track.values[0];
-                  const diffY = meshHipsRestingPosition.y - track.values[1];
-                  const diffZ = meshHipsRestingPosition.z - track.values[2];
-                  for (let i = 0; i < track.values.length; i += 3) {
-                     track.values[i] += diffX;
-                     track.values[i+1] += diffY;
-                     track.values[i+2] += diffZ;
+               if (!isCustomAnim) {
+                  track.name = track.name.replace(/^(mixamorig[a-zA-Z0-9_]*:|mixamorig\d*)/, this.basePrefix);
+                  if (this.basePrefix === '' && track.name.includes(':')) {
+                     track.name = track.name.replace(/^.*:/, ''); 
+                  }
+                  if (track.name.includes('Hips.position') && track.values.length >= 3) {
+                     const diffX = meshHipsRestingPosition.x - track.values[0];
+                     const diffY = meshHipsRestingPosition.y - track.values[1];
+                     const diffZ = meshHipsRestingPosition.z - track.values[2];
+                     for (let i = 0; i < track.values.length; i += 3) {
+                        track.values[i] += diffX;
+                        track.values[i+1] += diffY;
+                        track.values[i+2] += diffZ;
+                     }
                   }
                }
-            });
             
-            const action = this.mixer!.clipAction(clip);
+            });
+             const action = this.mixer!.clipAction(clip);
             if (anim.name === 'jump') {
               action.setLoop(THREE.LoopOnce, 1);
               action.clampWhenFinished = true;
