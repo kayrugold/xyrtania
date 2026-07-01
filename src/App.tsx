@@ -31,6 +31,13 @@ export default function App() {
   const [lastLoadError, setLastLoadError] = useState<string | null>(null);
   const [gamepadName, setGamepadName] = useState<string | null>(null);
   
+  // Real-time network states synced with Colyseus loop
+  const [netStatus, setNetStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('disconnected');
+  const [netRoomId, setNetRoomId] = useState<string | null>(null);
+  const [netEndpoint, setNetEndpoint] = useState<string>('');
+  const [netPeersCount, setNetPeersCount] = useState<number>(0);
+  const [peerNames, setPeerNames] = useState<string[]>([]);
+  
   const [showCustomizer, setShowCustomizer] = useState(false);
   const [customColor, setCustomColor] = useState<string>('#ffffff');
   const [customScale, setCustomScale] = useState<number>(1.0);
@@ -231,6 +238,46 @@ export default function App() {
     const networkManager = new NetworkManager('xyrtania-world-1', 'main-room');
     const remoteAnimators = new Map<string, CharacterAnimator>();
 
+    // Initial state bindings
+    setNetEndpoint(networkManager.serverEndpoint);
+    setNetStatus(networkManager.status);
+    setNetRoomId(networkManager.roomId || null);
+
+    networkManager.onStatusChange = (status, roomId) => {
+      setNetStatus(status);
+      setNetRoomId(roomId || null);
+    };
+
+    networkManager.onPeersChange = (count) => {
+      setNetPeersCount(count);
+      const names: string[] = [];
+      for (const peer of networkManager.peers.values()) {
+        names.push(peer.state.displayName || 'Anonymous');
+      }
+      setPeerNames(names);
+    };
+
+    networkManager.onPeerJoin = (id) => {
+      const names: string[] = [];
+      for (const peer of networkManager.peers.values()) {
+        names.push(peer.state.displayName || 'Anonymous');
+      }
+      setPeerNames(names);
+    };
+
+    networkManager.onPeerLeave = (id) => {
+      const remAnim = remoteAnimators.get(id);
+      if (remAnim) {
+        scene.remove(remAnim.group);
+        remoteAnimators.delete(id);
+      }
+      const names: string[] = [];
+      for (const peer of networkManager.peers.values()) {
+        names.push(peer.state.displayName || 'Anonymous');
+      }
+      setPeerNames(names);
+    };
+
     networkManager.onPeerAnimationStateChange = (peerId, animationState) => {
         const remAnim = remoteAnimators.get(peerId);
         if (remAnim) {
@@ -243,6 +290,11 @@ export default function App() {
         if (remAnim && displayName) {
             remAnim.updateNametag(displayName);
         }
+        const names: string[] = [];
+        for (const peer of networkManager.peers.values()) {
+          names.push(peer.state.displayName || 'Anonymous');
+        }
+        setPeerNames(names);
     };
 
     // --- 6. NATIVE 3D HUD COMPONENT GENERATION (HUD Scene) ---
@@ -1767,7 +1819,13 @@ export default function App() {
       )}
 
       {/* PWA Cryptographic Identity */}
-      <AccountUI />
+      <AccountUI 
+        netStatus={netStatus}
+        netRoomId={netRoomId}
+        netEndpoint={netEndpoint}
+        netPeersCount={netPeersCount}
+        peerNames={peerNames}
+      />
       
       {/* Gamepad Connection Overlay */}
       {gamepadName && (

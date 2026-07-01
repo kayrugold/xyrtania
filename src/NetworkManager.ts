@@ -16,10 +16,17 @@ export class NetworkManager {
   private isDisconnected = false;
   private isReconnecting = false;
   
+  public status: 'connected' | 'disconnected' | 'reconnecting' = 'disconnected';
+  public roomId?: string;
+  public serverEndpoint: string;
+  
   public onPeerJoin?: (id: string) => void;
   public onPeerLeave?: (id: string) => void;
   public onPeerAnimationStateChange?: (id: string, animationState: string) => void;
   public onPeerDisplayNameChange?: (id: string, displayName: string) => void;
+  
+  public onStatusChange?: (status: 'connected' | 'disconnected' | 'reconnecting', roomId?: string) => void;
+  public onPeersChange?: (peersCount: number) => void;
   
   private lastKnownState?: PlayerState;
   private lastSentAnimation?: string;
@@ -31,14 +38,18 @@ export class NetworkManager {
   constructor(appId: string, roomName: string) {
     // Dynamically connect to the local full-stack container server via current host and protocol
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const endpoint = `${protocol}//${window.location.host}`;
+    this.serverEndpoint = `${protocol}//${window.location.host}`;
       
-    this.client = new Client(endpoint);
+    this.client = new Client(this.serverEndpoint);
     this.connectToServer();
   }
 
   private async connectToServer() {
     this.peers.clear(); // Clear any old stale peer references from previous connections
+    if (this.onPeersChange) this.onPeersChange(0);
+    this.status = 'reconnecting';
+    if (this.onStatusChange) this.onStatusChange(this.status);
+    
     try {
       const initialDisplayName = localStorage.getItem('xyrtania_display_name') || 'Anonymous';
       const initialAvatarId = '/assets/character/base_male.fbx'; // default
@@ -72,14 +83,21 @@ export class NetworkManager {
 
       if (this.isDisconnected) {
           room.leave();
+          this.status = 'disconnected';
+          if (this.onStatusChange) this.onStatusChange(this.status);
           return;
       }
       this.room = room;
+      this.roomId = room.roomId;
+      this.status = 'connected';
+      if (this.onStatusChange) this.onStatusChange(this.status, this.roomId);
       console.log("Joined colyseus room!", this.room.roomId);
 
       this.setupRoomListeners(room);
 
     } catch (e: any) {
+      this.status = 'disconnected';
+      if (this.onStatusChange) this.onStatusChange(this.status);
       if (!this.isDisconnected) {
           console.warn("Colyseus connection unavailable:", e?.message || e);
       }
@@ -95,6 +113,7 @@ export class NetworkManager {
       room.state.players.onAdd((player: any, sessionId: string) => {
           if (sessionId === room.sessionId) {
               this.peers.delete(sessionId);
+              if (this.onPeersChange) this.onPeersChange(this.peers.size);
               return; // Ignore local player
           }
           
@@ -104,6 +123,7 @@ export class NetworkManager {
               state: this.createEmptyState(),
               lastUpdate: performance.now()
           });
+          if (this.onPeersChange) this.onPeersChange(this.peers.size);
 
           const peer = this.peers.get(sessionId)!;
           peer.state.position.set(player.x, player.y, player.z);
@@ -159,11 +179,17 @@ export class NetworkManager {
       room.state.players.onRemove((player: any, sessionId: string) => {
           console.log("Player left:", sessionId);
           this.peers.delete(sessionId);
+          if (this.onPeersChange) this.onPeersChange(this.peers.size);
           if (this.onPeerLeave) this.onPeerLeave(sessionId);
       });
 
       room.onLeave((code) => {
           console.log("Left room with code:", code);
+          this.status = 'disconnected';
+          this.roomId = undefined;
+          this.peers.clear();
+          if (this.onPeersChange) this.onPeersChange(0);
+          if (this.onStatusChange) this.onStatusChange(this.status);
           // 1000 is normal/consented close
           if (code !== 1000 && !this.isDisconnected) {
               const token = room.reconnectionToken || localStorage.getItem('xyrtania_reconnection_token');
@@ -181,6 +207,8 @@ export class NetworkManager {
   private async handleReconnection(token: string) {
       if (this.isReconnecting || this.isDisconnected) return;
       this.isReconnecting = true;
+      this.status = 'reconnecting';
+      if (this.onStatusChange) this.onStatusChange(this.status);
       console.log(`Lost connection unexpectedly. Attempting seamless reconnection using reconnection token...`);
 
       let attempts = 0;
@@ -194,7 +222,10 @@ export class NetworkManager {
               
               // Successfully reconnected!
               this.room = reconnectedRoom;
+              this.roomId = reconnectedRoom.roomId;
               this.isReconnecting = false;
+              this.status = 'connected';
+              if (this.onStatusChange) this.onStatusChange(this.status, this.roomId);
               console.log("Successfully reconnected to existing session!");
               
               this.setupRoomListeners(reconnectedRoom);

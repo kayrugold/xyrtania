@@ -2,7 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { useCryptoAuth } from '../auth/useCryptoAuth';
 import { Settings, Copy, Check } from 'lucide-react';
 
-export const AccountUI: React.FC = () => {
+export interface AccountUIProps {
+  netStatus?: 'connected' | 'disconnected' | 'reconnecting';
+  netRoomId?: string | null;
+  netEndpoint?: string;
+  netPeersCount?: number;
+  peerNames?: string[];
+}
+
+export const AccountUI: React.FC<AccountUIProps> = ({
+  netStatus = 'disconnected',
+  netRoomId = null,
+  netEndpoint = '',
+  netPeersCount = 0,
+  peerNames = [],
+}) => {
   const { session, displayName, isSyncing, lastSyncTime, recover, createNew, resetLocal, updateCharacter } = useCryptoAuth();
   
   const [isRecovering, setIsRecovering] = useState(false);
@@ -92,8 +106,12 @@ export const AccountUI: React.FC = () => {
           
           {/* Debug / Status Indicator for Peers */}
           <div className="bg-black/60 px-3 py-1 rounded-full text-xs font-mono border border-emerald-900/50 backdrop-blur-sm text-emerald-400 flex items-center gap-1.5" title="Connected Peers">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-            Online
+            <div className={`w-2 h-2 rounded-full ${
+              netStatus === 'connected' ? 'bg-emerald-500 animate-pulse' :
+              netStatus === 'reconnecting' ? 'bg-amber-500 animate-ping' :
+              'bg-red-500'
+            }`}></div>
+            {netStatus === 'connected' ? `${netPeersCount + 1} Online` : netStatus === 'reconnecting' ? 'Connecting...' : 'Offline'}
           </div>
         </div>
       )}
@@ -203,6 +221,75 @@ export const AccountUI: React.FC = () => {
                 >
                   {isSyncing ? 'Syncing...' : 'Start Game'}
                 </button>
+              )}
+
+              {/* Connection Status & Multi-container warning */}
+              {isSetupComplete && (
+                <div className="pt-3 border-t border-gray-800 flex flex-col gap-2.5">
+                  <p className="text-emerald-400 font-bold text-xs uppercase tracking-wider">Multiplayer Connection</p>
+                  
+                  <div className="bg-gray-900/60 p-2.5 rounded border border-gray-800/80 flex flex-col gap-1.5 text-[11px] font-mono leading-normal">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-500">Status:</span>
+                      <span className={`font-bold flex items-center gap-1 ${
+                        netStatus === 'connected' ? 'text-emerald-400' :
+                        netStatus === 'reconnecting' ? 'text-amber-400 animate-pulse' :
+                        'text-red-400'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          netStatus === 'connected' ? 'bg-emerald-500' :
+                          netStatus === 'reconnecting' ? 'bg-amber-500' :
+                          'bg-red-500'
+                        }`}></span>
+                        {netStatus.toUpperCase()}
+                      </span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-500">Room ID:</span>
+                      <span className="text-gray-300 select-all truncate max-w-[130px]" title={netRoomId || 'None'}>
+                        {netRoomId ? netRoomId : '—'}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-500">Players Here:</span>
+                      <span className="text-emerald-400 font-bold">
+                        {netStatus === 'connected' ? netPeersCount + 1 : 0} online
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center border-t border-gray-800/60 pt-1.5 mt-0.5">
+                      <span className="text-gray-500">Server Host:</span>
+                      <span className="text-gray-400 truncate max-w-[130px] text-[10px]" title={netEndpoint || 'None'}>
+                        {netEndpoint ? netEndpoint.replace(/^wss?:\/\//, '') : '—'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* List of active players in the room */}
+                  {netStatus === 'connected' && (
+                    <div>
+                      <p className="text-[10px] text-gray-500 mb-1">Players in this room:</p>
+                      <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-1">
+                        <span className="bg-emerald-950/40 text-emerald-300 border border-emerald-500/20 px-1.5 py-0.5 rounded text-[10px]">
+                          {displayName || 'You'} (You)
+                        </span>
+                        {peerNames.map((name, i) => (
+                          <span key={i} className="bg-gray-900 text-gray-300 border border-gray-800 px-1.5 py-0.5 rounded text-[10px]">
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cross-Play Warning */}
+                  <div className="bg-blue-950/40 border border-blue-900/60 p-2.5 rounded text-[10px] text-blue-200 leading-normal font-sans">
+                    <span className="font-bold text-blue-400 font-mono block mb-0.5">💡 CROSS-PLAY NOTICE</span>
+                    Each URL environment (Development vs. Shared Preview) runs on a separate isolated container. To play together, <strong className="text-white">both players must use the EXACT same URL</strong>!
+                  </div>
+                </div>
               )}
 
               <div className="flex justify-between gap-2 mt-1 sm:mt-2 border-t border-gray-800 pt-2 sm:pt-3">
