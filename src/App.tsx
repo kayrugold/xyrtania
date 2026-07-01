@@ -28,6 +28,7 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showHud, setShowHud] = useState(true);
   const [isFakeFullscreen, setIsFakeFullscreen] = useState(false);
+  const [lastLoadError, setLastLoadError] = useState<string | null>(null);
   const [gamepadName, setGamepadName] = useState<string | null>(null);
   
   const [showCustomizer, setShowCustomizer] = useState(false);
@@ -219,6 +220,9 @@ export default function App() {
 
     // Explorer Character Mesh (FBX + Animations)
     const animator = new CharacterAnimator();
+    CharacterAnimator.onError = (err) => {
+      setLastLoadError(err || null);
+    };
     localAnimatorRef.current = animator;
     playerRootGroup.add(animator.group);
     animator.loadModelAndAnimations().catch((err) => console.error(err));
@@ -645,8 +649,8 @@ export default function App() {
       '/assets/character/base_male.fbx', 
       '/assets/character/base_male_0/base_male_0.fbx',
       '/assets/character/bob.fbx',
-      '/assets/character/humanoid/Unarmed_Idle.fbx',
-      '/assets/character/explorer_clone/Breathing_Idle.fbx'
+      '/assets/character/humanoid/humanoid.fbx',
+      '/assets/character/explorer_clone/explorer_clone.fbx'
     ];
     
     // Kickoff background async preloading of all models to avoid lag spikes
@@ -1753,6 +1757,15 @@ export default function App() {
 
   return (
     <div className={isFakeFullscreen ? "fixed inset-0 z-[99999] w-full h-[100dvh] bg-[#050508] text-slate-300 font-sans overflow-hidden" : "w-screen h-[100dvh] bg-[#050508] text-slate-300 font-sans relative overflow-hidden"}>
+      {/* Character Loading Error Banner */}
+      {lastLoadError && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-950/80 border border-red-500/40 backdrop-blur-md text-red-200 px-4 py-2.5 rounded-lg text-xs font-mono tracking-wide z-[100] shadow-[0_0_15px_rgba(239,68,68,0.25)] flex items-center gap-3">
+          <div className="w-2 h-2 rounded-full bg-red-500 animate-ping"></div>
+          <span>{lastLoadError}</span>
+          <button onClick={() => setLastLoadError(null)} className="text-red-400 hover:text-red-200 ml-2 font-sans text-sm font-bold cursor-pointer">✕</button>
+        </div>
+      )}
+
       {/* PWA Cryptographic Identity */}
       <AccountUI />
       

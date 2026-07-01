@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { PlayerState, JumpPhase } from './types';
 
@@ -9,6 +10,8 @@ export const MODEL_SCALE_CONFIG: Record<string, { targetDepth?: number; targetWi
   'base_male_0.fbx': { targetHeight: 2.14 },
   'Unarmed_Idle.fbx': { targetHeight: 2.14 },
   'Breathing_Idle.fbx': { targetHeight: 2.14 },
+  'humanoid.fbx': { targetHeight: 2.14 },
+  'explorer_clone.fbx': { targetHeight: 2.14 },
   'default': { targetHeight: 2.14 }
 };
 
@@ -36,6 +39,7 @@ export class CharacterAnimator {
   private static modelCache = new Map<string, Promise<THREE.Group>>();
   private static animCache = new Map<string, Promise<THREE.Group>>();
   private static textureCache = new Map<string, Promise<THREE.Texture>>();
+  public static onError: ((error: string) => void) | null = null;
 
   public static async preloadCharacters(characterUrls: string[]) {
       const animations = [
@@ -65,7 +69,7 @@ export class CharacterAnimator {
       for (const url of characterUrls) {
           this.getModel(url).catch(() => {});
           
-          if (url.includes('humanoid') || url.includes('explorer_clone')) {
+          if (url.includes('humanoid') || url.includes('explorer_clone') || url.includes('base_male_0')) {
               const basePath = url.substring(0, url.lastIndexOf('/'));
               this.getTexture(`${basePath}/Color.png`).catch(() => {});
               this.getTexture(`${basePath}/Normal.png`).catch(() => {});
@@ -85,15 +89,35 @@ export class CharacterAnimator {
   private static getTexture(url: string): Promise<THREE.Texture> {
     if (!this.textureCache.has(url)) {
       const loader = new THREE.TextureLoader();
-      this.textureCache.set(url, loader.loadAsync(url));
+      const promise = loader.loadAsync(url).catch((err) => {
+        this.textureCache.delete(url);
+        throw err;
+      });
+      this.textureCache.set(url, promise);
     }
     return this.textureCache.get(url)!;
   }
 
   private static getModel(url: string): Promise<THREE.Group> {
     if (!this.modelCache.has(url)) {
-      const loader = new FBXLoader();
-      this.modelCache.set(url, loader.loadAsync(url));
+      const isGltf = url.toLowerCase().endsWith('.glb') || url.toLowerCase().endsWith('.gltf') || url.includes('.glb') || url.includes('.gltf');
+      if (isGltf) {
+        const loader = new GLTFLoader();
+        const promise = loader.loadAsync(url).then((gltf) => {
+          return gltf.scene;
+        }).catch((err) => {
+          this.modelCache.delete(url);
+          throw err;
+        });
+        this.modelCache.set(url, promise as any);
+      } else {
+        const loader = new FBXLoader();
+        const promise = loader.loadAsync(url).catch((err) => {
+          this.modelCache.delete(url);
+          throw err;
+        });
+        this.modelCache.set(url, promise);
+      }
     }
     return this.modelCache.get(url)!;
   }
@@ -101,7 +125,11 @@ export class CharacterAnimator {
   private static getAnimation(url: string): Promise<THREE.Group> {
     if (!this.animCache.has(url)) {
       const loader = new FBXLoader();
-      this.animCache.set(url, loader.loadAsync(url));
+      const promise = loader.loadAsync(url).catch((err) => {
+        this.animCache.delete(url);
+        throw err;
+      });
+      this.animCache.set(url, promise);
     }
     return this.animCache.get(url)!;
   }
@@ -198,7 +226,8 @@ export class CharacterAnimator {
       object.position.set(0, this.baseYOffset, 0);
       this.innerMesh = object;
 
-      const isCustomTripoModel = modelUrl.includes('humanoid') || modelUrl.includes('explorer_clone') || modelUrl.includes('base_male_0');
+      const isGltf = modelUrl.toLowerCase().endsWith('.glb') || modelUrl.toLowerCase().endsWith('.gltf') || modelUrl.includes('.glb') || modelUrl.includes('.gltf');
+      const isCustomTripoModel = !isGltf && (modelUrl.includes('humanoid') || modelUrl.includes('explorer_clone') || modelUrl.includes('base_male_0'));
       let colorMap: THREE.Texture | null = null;
       let normalMap: THREE.Texture | null = null;
       let metallicMap: THREE.Texture | null = null;
@@ -206,11 +235,27 @@ export class CharacterAnimator {
       
       if (isCustomTripoModel) {
           const basePath = modelUrl.substring(0, modelUrl.lastIndexOf('/'));
-          colorMap = await CharacterAnimator.getTexture(`${basePath}/Color.png`);
-          colorMap.colorSpace = THREE.SRGBColorSpace;
-          normalMap = await CharacterAnimator.getTexture(`${basePath}/Normal.png`);
-          metallicMap = await CharacterAnimator.getTexture(`${basePath}/Metallic.png`);
-          roughnessMap = await CharacterAnimator.getTexture(`${basePath}/Roughness.png`);
+          try {
+              colorMap = await CharacterAnimator.getTexture(`${basePath}/Color.png`);
+              colorMap.colorSpace = THREE.SRGBColorSpace;
+          } catch (e) {
+              console.warn(`Could not load color map for ${modelUrl}:`, e);
+          }
+          try {
+              normalMap = await CharacterAnimator.getTexture(`${basePath}/Normal.png`);
+          } catch (e) {
+              console.warn(`Could not load normal map for ${modelUrl}:`, e);
+          }
+          try {
+              metallicMap = await CharacterAnimator.getTexture(`${basePath}/Metallic.png`);
+          } catch (e) {
+              console.warn(`Could not load metallic map for ${modelUrl}:`, e);
+          }
+          try {
+              roughnessMap = await CharacterAnimator.getTexture(`${basePath}/Roughness.png`);
+          } catch (e) {
+              console.warn(`Could not load roughness map for ${modelUrl}:`, e);
+          }
       }
       
       let foundBone = false;
@@ -221,25 +266,31 @@ export class CharacterAnimator {
           child.receiveShadow = true;
           if (isCustomTripoModel && child.material) {
               const applyMaps = (origMat: any) => {
-                  const mat = origMat.clone(); // Clone material to avoid mutating shared cache
-                  mat.map = colorMap;
-                  mat.normalMap = normalMap;
-                  if (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial) {
-                      mat.metalnessMap = metallicMap;
-                      mat.roughnessMap = roughnessMap;
-                      mat.color = new THREE.Color(1, 1, 1);
-                  } else if (mat.isMeshPhongMaterial) {
-                      const newMat = new THREE.MeshStandardMaterial({
-                          map: colorMap,
-                          normalMap: normalMap,
-                          metalnessMap: metallicMap,
-                          roughnessMap: roughnessMap,
-                          color: new THREE.Color(1, 1, 1)
-                      });
+                  if (origMat.isMeshStandardMaterial || origMat.isMeshPhysicalMaterial) {
+                      const mat = origMat.clone();
+                      if (colorMap) mat.map = colorMap;
+                      if (normalMap) mat.normalMap = normalMap;
+                      if (metallicMap) mat.metalnessMap = metallicMap;
+                      if (roughnessMap) mat.roughnessMap = roughnessMap;
+                      mat.color.setRGB(1, 1, 1);
+                      mat.needsUpdate = true;
+                      return mat;
+                  } else if (origMat.isMeshPhongMaterial) {
+                      const newMat = new THREE.MeshStandardMaterial();
+                      if (colorMap) newMat.map = colorMap;
+                      if (normalMap) newMat.normalMap = normalMap;
+                      if (metallicMap) newMat.metalnessMap = metallicMap;
+                      if (roughnessMap) newMat.roughnessMap = roughnessMap;
+                      newMat.color.setRGB(1, 1, 1);
+                      newMat.needsUpdate = true;
                       return newMat;
+                  } else {
+                      const mat = origMat.clone();
+                      if (colorMap && 'map' in mat) mat.map = colorMap;
+                      if (normalMap && 'normalMap' in mat) mat.normalMap = normalMap;
+                      mat.needsUpdate = true;
+                      return mat;
                   }
-                  mat.needsUpdate = true;
-                  return mat;
               };
               if (Array.isArray(child.material)) {
                   child.material = child.material.map(applyMaps);
@@ -255,13 +306,14 @@ export class CharacterAnimator {
                           origMat.metalness = 0.1;
                           return origMat;
                       }
-                      return new THREE.MeshStandardMaterial({
-                          map: origMat.map,
-                          normalMap: origMat.normalMap,
-                          roughness: 0.6,
-                          metalness: 0.1,
-                          color: origMat.color || new THREE.Color(1, 1, 1)
-                      });
+                      const newMat = new THREE.MeshStandardMaterial();
+                      newMat.map = origMat.map;
+                      if (origMat.normalMap) newMat.normalMap = origMat.normalMap;
+                      newMat.roughness = 0.6;
+                      newMat.metalness = 0.1;
+                      if (origMat.color) newMat.color.copy(origMat.color);
+                      newMat.needsUpdate = true;
+                      return newMat;
                   }
                   return new THREE.MeshStandardMaterial({
                       color: modelUrl.includes('female') ? 0xfecdd3 : 0xbae6fd, // Soft pink for female, soft blue for male
@@ -361,13 +413,19 @@ export class CharacterAnimator {
       }));
 
       this.modelLoaded = true;
+      if (CharacterAnimator.onError) {
+        CharacterAnimator.onError('');
+      }
       // Triggers stored animation state, defaulting to 'neutral_idle' or 'idle'
       this.playAction(this.currentActionName || 'idle', 0);
       
       this.setCustomization(this.customColor, this.customScale);
       
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error loading base mesh', err);
+      if (CharacterAnimator.onError) {
+        CharacterAnimator.onError(`Failed to load ${modelUrl}: ${err?.message || err}`);
+      }
       // Fallback placeholder mesh
       const geo = new THREE.CapsuleGeometry(0.5, 1, 4, 16);
       const mat = new THREE.MeshStandardMaterial({ color: 0xff4444 });
