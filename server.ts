@@ -14,6 +14,16 @@ async function startServer() {
   app.use(cors());
   app.use(express.json());
 
+  // Enforce correct Content-Type and Content-Encoding for FBX files to prevent proxy-level compression/corruption
+  app.use((req, res, next) => {
+    if (req.url && req.url.endsWith('.fbx')) {
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.setHeader('Content-Encoding', 'identity');
+      res.setHeader('Cache-Control', 'public, max-age=31536000');
+    }
+    next();
+  });
+
   app.use("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });

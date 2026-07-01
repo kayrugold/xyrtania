@@ -152,6 +152,7 @@ export class CharacterAnimator {
   }
 
   public async loadModelAndAnimations(modelUrl: string = '/assets/character/base_male.fbx') {
+    const requestedUrl = modelUrl;
     this.currentModelUrl = modelUrl;
     // Clear old group children except nametag
     const toRemove: THREE.Object3D[] = [];
@@ -178,12 +179,19 @@ export class CharacterAnimator {
     
     try {
       // First load the base mesh using cache, with a robust fallback to base_male.fbx
+      let modelToLoad = modelUrl;
+      if (modelUrl.includes('humanoid.fbx')) {
+        modelToLoad = '/assets/character/humanoid/Unarmed_Idle.fbx';
+      } else if (modelUrl.includes('explorer_clone.fbx')) {
+        modelToLoad = '/assets/character/explorer_clone/Breathing_Idle.fbx';
+      }
+
       let cachedObject: THREE.Group;
       try {
-        cachedObject = await CharacterAnimator.getModel(modelUrl);
+        cachedObject = await CharacterAnimator.getModel(modelToLoad);
       } catch (loadErr) {
-        console.warn(`Failed to load requested model ${modelUrl}, falling back to base_male.fbx`, loadErr);
-        if (modelUrl !== '/assets/character/base_male.fbx') {
+        console.warn(`Failed to load requested model ${modelToLoad}, falling back to base_male.fbx`, loadErr);
+        if (modelToLoad !== '/assets/character/base_male.fbx') {
           this.currentModelUrl = '/assets/character/base_male.fbx';
           cachedObject = await CharacterAnimator.getModel('/assets/character/base_male.fbx');
         } else {
@@ -196,7 +204,7 @@ export class CharacterAnimator {
       
       let config = MODEL_SCALE_CONFIG['default'];
       for (const key in MODEL_SCALE_CONFIG) {
-        if (this.currentModelUrl.includes(key)) {
+        if (requestedUrl.includes(key)) {
           config = MODEL_SCALE_CONFIG[key];
           break;
         }
@@ -219,7 +227,7 @@ export class CharacterAnimator {
         scaleAmount = 1.2 / (size.z || 1);
       }
 
-      if (this.currentModelUrl.includes('base_male_0')) {
+      if (requestedUrl.includes('base_male_0')) {
         // Broaden width (X) and increase depth (Z) to match the explorer's robust bulk and chest depth
         object.scale.set(scaleAmount * 1.35, scaleAmount, scaleAmount * 1.55);
       } else {
@@ -237,42 +245,37 @@ export class CharacterAnimator {
       this.baseYOffset = -boxScaled.min.y;
       object.position.set(0, this.baseYOffset, 0);
       
-      // Apply base standing corrective rotation for custom models that default to horizontal/lying down orientation
-      if (this.currentModelUrl.includes('humanoid') || this.currentModelUrl.includes('explorer_clone')) {
-        object.rotation.x = -Math.PI / 2;
-      }
-      
       this.innerMesh = object;
 
-      const isGltf = this.currentModelUrl.toLowerCase().endsWith('.glb') || this.currentModelUrl.toLowerCase().endsWith('.gltf') || this.currentModelUrl.includes('.glb') || this.currentModelUrl.includes('.gltf');
-      const isCustomTripoModel = !isGltf && (this.currentModelUrl.includes('humanoid') || this.currentModelUrl.includes('explorer_clone') || this.currentModelUrl.includes('base_male_0'));
+      const isGltf = requestedUrl.toLowerCase().endsWith('.glb') || requestedUrl.toLowerCase().endsWith('.gltf') || requestedUrl.includes('.glb') || requestedUrl.includes('.gltf');
+      const isCustomTripoModel = !isGltf && (requestedUrl.includes('humanoid') || requestedUrl.includes('explorer_clone') || requestedUrl.includes('base_male_0'));
       let colorMap: THREE.Texture | null = null;
       let normalMap: THREE.Texture | null = null;
       let metallicMap: THREE.Texture | null = null;
       let roughnessMap: THREE.Texture | null = null;
       
       if (isCustomTripoModel) {
-          const basePath = this.currentModelUrl.substring(0, this.currentModelUrl.lastIndexOf('/'));
+          const basePath = requestedUrl.substring(0, requestedUrl.lastIndexOf('/'));
           try {
               colorMap = await CharacterAnimator.getTexture(`${basePath}/Color.png`);
               colorMap.colorSpace = THREE.SRGBColorSpace;
           } catch (e) {
-              console.warn(`Could not load color map for ${this.currentModelUrl}:`, e);
+              console.warn(`Could not load color map for ${requestedUrl}:`, e);
           }
           try {
               normalMap = await CharacterAnimator.getTexture(`${basePath}/Normal.png`);
           } catch (e) {
-              console.warn(`Could not load normal map for ${this.currentModelUrl}:`, e);
+              console.warn(`Could not load normal map for ${requestedUrl}:`, e);
           }
           try {
               metallicMap = await CharacterAnimator.getTexture(`${basePath}/Metallic.png`);
           } catch (e) {
-              console.warn(`Could not load metallic map for ${this.currentModelUrl}:`, e);
+              console.warn(`Could not load metallic map for ${requestedUrl}:`, e);
           }
           try {
               roughnessMap = await CharacterAnimator.getTexture(`${basePath}/Roughness.png`);
           } catch (e) {
-              console.warn(`Could not load roughness map for ${this.currentModelUrl}:`, e);
+              console.warn(`Could not load roughness map for ${requestedUrl}:`, e);
           }
       }
       
@@ -334,7 +337,7 @@ export class CharacterAnimator {
                       return newMat;
                   }
                   return new THREE.MeshStandardMaterial({
-                      color: this.currentModelUrl.includes('female') ? 0xfecdd3 : 0xbae6fd, // Soft pink for female, soft blue for male
+                      color: requestedUrl.includes('female') ? 0xfecdd3 : 0xbae6fd, // Soft pink for female, soft blue for male
                       roughness: 0.6,
                       metalness: 0.1,
                   });
@@ -393,12 +396,22 @@ export class CharacterAnimator {
         { name: 'breathing_idle', url: '/assets/character/animations/breathing_idle.fbx' },
       ];
 
-      if (this.currentModelUrl.includes('humanoid')) {
+      if (requestedUrl.includes('humanoid')) {
         const customIdleUrl = '/assets/character/humanoid/Unarmed_Idle.fbx';
-        animationsToLoad = animationsToLoad.map(a => ({ name: a.name, url: customIdleUrl }));
-      } else if (this.currentModelUrl.includes('explorer_clone')) {
+        animationsToLoad = animationsToLoad.map(a => {
+          if (a.name === 'idle' || a.name === 'neutral_idle' || a.name === 'breathing_idle') {
+            return { name: a.name, url: customIdleUrl };
+          }
+          return a;
+        });
+      } else if (requestedUrl.includes('explorer_clone')) {
         const customIdleUrl = '/assets/character/explorer_clone/Breathing_Idle.fbx';
-        animationsToLoad = animationsToLoad.map(a => ({ name: a.name, url: customIdleUrl }));
+        animationsToLoad = animationsToLoad.map(a => {
+          if (a.name === 'idle' || a.name === 'neutral_idle' || a.name === 'breathing_idle') {
+            return { name: a.name, url: customIdleUrl };
+          }
+          return a;
+        });
       }
       
       await Promise.all(animationsToLoad.map(async (anim) => {
