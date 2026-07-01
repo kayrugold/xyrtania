@@ -8,6 +8,8 @@ export interface AccountUIProps {
   netEndpoint?: string;
   netPeersCount?: number;
   peerNames?: string[];
+  connectionMode?: 'colyseus_render' | 'colyseus_local' | 'p2p';
+  onChangeConnectionMode?: (mode: 'colyseus_render' | 'colyseus_local' | 'p2p') => void;
 }
 
 export const AccountUI: React.FC<AccountUIProps> = ({
@@ -16,6 +18,8 @@ export const AccountUI: React.FC<AccountUIProps> = ({
   netEndpoint = '',
   netPeersCount = 0,
   peerNames = [],
+  connectionMode = 'colyseus_render',
+  onChangeConnectionMode,
 }) => {
   const { session, displayName, isSyncing, lastSyncTime, recover, createNew, resetLocal, updateCharacter } = useCryptoAuth();
   
@@ -84,7 +88,7 @@ export const AccountUI: React.FC<AccountUIProps> = ({
   };
 
   return (
-    <div className={!isSetupComplete ? "fixed inset-0 z-[999999] pointer-events-auto bg-black/80 backdrop-blur-sm flex items-center justify-center" : "absolute top-4 right-4 z-50 pointer-events-auto flex flex-col items-end gap-2"}>
+    <div className={!isSetupComplete ? "fixed inset-0 z-[999999] pointer-events-auto bg-black/80 backdrop-blur-sm flex items-center justify-center" : "absolute top-[72px] right-4 z-50 pointer-events-auto flex flex-col items-end gap-2"}>
       {/* Background Syncing Indicator HUD */}
       {isSyncing && (
         <div className="bg-emerald-900/80 border border-emerald-500 rounded px-3 py-1 flex items-center gap-2 shadow-[0_0_10px_rgba(16,185,129,0.5)]">
@@ -96,23 +100,23 @@ export const AccountUI: React.FC<AccountUIProps> = ({
       {/* Toggle Button for Returning Players */}
       {!isPanelOpen && (
         <div className="flex items-center gap-2">
-          <button 
-            onClick={() => setIsPanelOpen(true)}
-            className="bg-black/80 hover:bg-black p-2 rounded-full border border-gray-700 text-gray-400 hover:text-white transition-colors shadow-lg backdrop-blur-md"
-            title="Account Settings"
-          >
-            <Settings size={20} />
-          </button>
-          
           {/* Debug / Status Indicator for Peers */}
-          <div className="bg-black/60 px-3 py-1 rounded-full text-xs font-mono border border-emerald-900/50 backdrop-blur-sm text-emerald-400 flex items-center gap-1.5" title="Connected Peers">
+          <div className="bg-black/80 px-3 py-1.5 rounded-full text-xs font-mono border border-emerald-500/30 backdrop-blur-md text-emerald-400 flex items-center gap-1.5 shadow-lg select-none" title="Connected Peers">
             <div className={`w-2 h-2 rounded-full ${
-              netStatus === 'connected' ? 'bg-emerald-500 animate-pulse' :
-              netStatus === 'reconnecting' ? 'bg-amber-500 animate-ping' :
+              netStatus === 'connected' ? 'bg-emerald-400 animate-pulse' :
+              netStatus === 'reconnecting' ? 'bg-amber-400 animate-ping' :
               'bg-red-500'
             }`}></div>
-            {netStatus === 'connected' ? `${netPeersCount + 1} Online` : netStatus === 'reconnecting' ? 'Connecting...' : 'Offline'}
+            <span>{netStatus === 'connected' ? `${netPeersCount + 1} Online` : netStatus === 'reconnecting' ? 'Connecting...' : 'Offline'}</span>
           </div>
+
+          <button 
+            onClick={() => setIsPanelOpen(true)}
+            className="bg-black/80 hover:bg-black p-2 rounded-full border border-emerald-500/40 text-emerald-400 hover:text-emerald-200 transition-all shadow-[0_0_12px_rgba(16,185,129,0.25)] hover:shadow-[0_0_16px_rgba(16,185,129,0.45)] cursor-pointer backdrop-blur-md flex items-center justify-center"
+            title="Account Settings"
+          >
+            <Settings size={20} className="hover:rotate-45 transition-transform duration-300" />
+          </button>
         </div>
       )}
 
@@ -228,6 +232,46 @@ export const AccountUI: React.FC<AccountUIProps> = ({
                 <div className="pt-3 border-t border-gray-800 flex flex-col gap-2.5">
                   <p className="text-emerald-400 font-bold text-xs uppercase tracking-wider">Multiplayer Connection</p>
                   
+                  {/* Connection Mode Selector */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[10px] text-gray-500 font-mono">Connection Mode:</span>
+                    <div className="flex flex-col gap-1">
+                      <button
+                        onClick={() => onChangeConnectionMode?.('colyseus_render')}
+                        className={`w-full py-1 px-2 rounded text-[10px] font-bold border transition-all cursor-pointer text-left flex justify-between items-center ${
+                          connectionMode === 'colyseus_render'
+                            ? 'bg-emerald-600/30 text-emerald-400 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.25)]'
+                            : 'bg-gray-900 text-gray-500 border-gray-800 hover:text-gray-300'
+                        }`}
+                      >
+                        <span>Render Production Server</span>
+                        <span className="text-[9px] font-mono opacity-80">Render</span>
+                      </button>
+                      <button
+                        onClick={() => onChangeConnectionMode?.('colyseus_local')}
+                        className={`w-full py-1 px-2 rounded text-[10px] font-bold border transition-all cursor-pointer text-left flex justify-between items-center ${
+                          connectionMode === 'colyseus_local'
+                            ? 'bg-amber-600/30 text-amber-400 border-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                            : 'bg-gray-900 text-gray-500 border-gray-800 hover:text-gray-300'
+                        }`}
+                      >
+                        <span>Local Workspace Server</span>
+                        <span className="text-[9px] font-mono opacity-80">Workspace</span>
+                      </button>
+                      <button
+                        onClick={() => onChangeConnectionMode?.('p2p')}
+                        className={`w-full py-1 px-2 rounded text-[10px] font-bold border transition-all cursor-pointer text-left flex justify-between items-center ${
+                          connectionMode === 'p2p'
+                            ? 'bg-sky-600/30 text-sky-400 border-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.25)]'
+                            : 'bg-gray-900 text-gray-500 border-gray-800 hover:text-gray-300'
+                        }`}
+                      >
+                        <span>Direct P2P Client-Side</span>
+                        <span className="text-[9px] font-mono opacity-80">P2P</span>
+                      </button>
+                    </div>
+                  </div>
+                  
                   <div className="bg-gray-900/60 p-2.5 rounded border border-gray-800/80 flex flex-col gap-1.5 text-[11px] font-mono leading-normal">
                     <div className="flex justify-between items-center">
                       <span className="text-gray-500">Status:</span>
@@ -251,27 +295,29 @@ export const AccountUI: React.FC<AccountUIProps> = ({
                         {netRoomId ? netRoomId : '—'}
                       </span>
                     </div>
-
+ 
                     <div className="flex justify-between items-center">
                       <span className="text-gray-500">Players Here:</span>
                       <span className="text-emerald-400 font-bold">
                         {netStatus === 'connected' ? netPeersCount + 1 : 0} online
                       </span>
                     </div>
-
-                    <div className="flex justify-between items-center border-t border-gray-800/60 pt-1.5 mt-0.5">
-                      <span className="text-gray-500">Server Host:</span>
-                      <span className="text-gray-400 truncate max-w-[130px] text-[10px]" title={netEndpoint || 'None'}>
-                        {netEndpoint ? netEndpoint.replace(/^wss?:\/\//, '') : '—'}
-                      </span>
-                    </div>
+ 
+                    {connectionMode !== 'p2p' && (
+                      <div className="flex justify-between items-center border-t border-gray-800/60 pt-1.5 mt-0.5">
+                        <span className="text-gray-500">Server Host:</span>
+                        <span className="text-gray-400 truncate max-w-[130px] text-[10px]" title={netEndpoint || 'None'}>
+                          {netEndpoint ? netEndpoint.replace(/^wss?:\/\//, '') : '—'}
+                        </span>
+                      </div>
+                    )}
                   </div>
-
+ 
                   {/* List of active players in the room */}
                   {netStatus === 'connected' && (
                     <div>
                       <p className="text-[10px] text-gray-500 mb-1">Players in this room:</p>
-                      <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-1">
+                      <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto pr-1 font-mono">
                         <span className="bg-emerald-950/40 text-emerald-300 border border-emerald-500/20 px-1.5 py-0.5 rounded text-[10px]">
                           {displayName || 'You'} (You)
                         </span>
@@ -283,12 +329,27 @@ export const AccountUI: React.FC<AccountUIProps> = ({
                       </div>
                     </div>
                   )}
-
-                  {/* Cross-Play Warning */}
-                  <div className="bg-blue-950/40 border border-blue-900/60 p-2.5 rounded text-[10px] text-blue-200 leading-normal font-sans">
-                    <span className="font-bold text-blue-400 font-mono block mb-0.5">💡 CROSS-PLAY NOTICE</span>
-                    Each URL environment (Development vs. Shared Preview) runs on a separate isolated container. To play together, <strong className="text-white">both players must use the EXACT same URL</strong>!
-                  </div>
+ 
+                  {/* Mode-Specific Explanations & Cross-play Helper */}
+                  {connectionMode === 'colyseus_render' && (
+                    <div className="bg-emerald-950/25 border border-emerald-900/40 p-2.5 rounded text-[10px] text-emerald-200 leading-normal font-sans">
+                      <span className="font-bold text-emerald-400 font-mono block mb-0.5">🟢 RENDER PRODUCTION ONLINE</span>
+                      Connected to the live central game server at <strong className="text-emerald-300">xyrtania-server.onrender.com</strong>.
+                      <p className="mt-1 text-gray-400 text-[9px]">Note: Free instances spin down when inactive. If status shows disconnected, wait ~50s for it to wake up.</p>
+                    </div>
+                  )}
+                  {connectionMode === 'colyseus_local' && (
+                    <div className="bg-amber-950/25 border border-amber-900/40 p-2.5 rounded text-[10px] text-amber-200 leading-normal font-sans">
+                      <span className="font-bold text-amber-400 font-mono block mb-0.5">🟡 LOCAL WORKSPACE ACTIVE</span>
+                      Connected to this sandbox's built-in Express server inside your AI Studio dev container.
+                    </div>
+                  )}
+                  {connectionMode === 'p2p' && (
+                    <div className="bg-sky-950/30 border border-sky-900/50 p-2.5 rounded text-[10px] text-sky-200 leading-normal font-sans">
+                      <span className="font-bold text-sky-400 font-mono block mb-0.5">🔵 DIRECT P2P ACTIVE</span>
+                      Direct WebRTC connection. Connects players instantly without any central game server!
+                    </div>
+                  )}
                 </div>
               )}
 

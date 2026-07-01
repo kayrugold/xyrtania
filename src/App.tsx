@@ -50,6 +50,23 @@ export default function App() {
   }, [graphicsQuality]);
 
   const localAnimatorRef = useRef<CharacterAnimator | null>(null);
+  const networkManagerRef = useRef<NetworkManager | null>(null);
+
+  const [connectionMode, setConnectionMode] = useState<'colyseus_render' | 'colyseus_local' | 'p2p'>(() => {
+    let saved = localStorage.getItem('xyrtania_connection_mode') as 'colyseus_render' | 'colyseus_local' | 'p2p' | 'colyseus';
+    if (saved === 'colyseus') {
+      saved = 'colyseus_render';
+      localStorage.setItem('xyrtania_connection_mode', 'colyseus_render');
+    }
+    return saved || 'colyseus_render';
+  });
+
+  const handleConnectionModeChange = (mode: 'colyseus_render' | 'colyseus_local' | 'p2p') => {
+    setConnectionMode(mode);
+    if (networkManagerRef.current) {
+      networkManagerRef.current.setConnectionMode(mode);
+    }
+  };
 
   // References to invoke in-game actions from absolute HTML DOM target elements
   const triggerJumpRef = useRef<() => void>(() => {});
@@ -236,6 +253,7 @@ export default function App() {
 
     // --- 5. NETWORK MANAGER INITIALIZATION ---
     const networkManager = new NetworkManager('xyrtania-world-1', 'main-room');
+    networkManagerRef.current = networkManager;
     const remoteAnimators = new Map<string, CharacterAnimator>();
 
     // Initial state bindings
@@ -246,6 +264,7 @@ export default function App() {
     networkManager.onStatusChange = (status, roomId) => {
       setNetStatus(status);
       setNetRoomId(roomId || null);
+      setNetEndpoint(networkManager.serverEndpoint);
     };
 
     networkManager.onPeersChange = (count) => {
@@ -1786,6 +1805,7 @@ export default function App() {
     return () => {
       cancelAnimationFrame(frameId);
       networkManager.disconnect();
+      networkManagerRef.current = null;
       window.removeEventListener('keydown', keyPressHandler);
       window.removeEventListener('keyup', keyReleaseHandler);
       window.removeEventListener('resize', layoutUI);
@@ -1825,6 +1845,8 @@ export default function App() {
         netEndpoint={netEndpoint}
         netPeersCount={netPeersCount}
         peerNames={peerNames}
+        connectionMode={connectionMode}
+        onChangeConnectionMode={handleConnectionModeChange}
       />
       
       {/* Gamepad Connection Overlay */}

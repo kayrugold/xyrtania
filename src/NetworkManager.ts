@@ -1,6 +1,7 @@
 import { Client, Room } from 'colyseus.js';
 import { PlayerState } from './types';
 import * as THREE from 'three';
+import { joinRoom, selfId } from '@trystero-p2p/torrent';
 
 export interface RemotePlayer {
   id: string;
@@ -12,10 +13,16 @@ export interface RemotePlayer {
 export class NetworkManager {
   private client: Client;
   private room?: Room;
+  private p2pRoom?: any;
+  private p2pActions?: { sendMove?: any; sendAnimation?: any };
+  private appId: string;
+  private roomName: string;
+  
   public peers: Map<string, RemotePlayer> = new Map();
   private isDisconnected = false;
   private isReconnecting = false;
   
+  public connectionMode: 'colyseus_render' | 'colyseus_local' | 'p2p' = 'colyseus_render';
   public status: 'connected' | 'disconnected' | 'reconnecting' = 'disconnected';
   public roomId?: string;
   public serverEndpoint: string;
@@ -32,16 +39,174 @@ export class NetworkManager {
   private lastSentAnimation?: string;
 
   public get sessionId(): string | undefined {
-    return this.room?.sessionId;
+    if (this.connectionMode !== 'p2p') {
+      return this.room?.sessionId;
+    } else {
+      return selfId;
+    }
   }
 
   constructor(appId: string, roomName: string) {
-    // Dynamically connect to the local full-stack container server via current host and protocol
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    this.serverEndpoint = `${protocol}//${window.location.host}`;
+    this.appId = appId;
+    this.roomName = roomName;
+    
+    // Retrieve connection mode preference
+    let savedMode = localStorage.getItem('xyrtania_connection_mode') as 'colyseus_render' | 'colyseus_local' | 'p2p';
+    
+    // Support upgrading old 'colyseus' string if it is stored in localStorage
+    if (savedMode as any === 'colyseus') {
+      savedMode = 'colyseus_render';
+      localStorage.setItem('xyrtania_connection_mode', 'colyseus_render');
+    }
+    
+    if (savedMode === 'p2p') {
+      this.connectionMode = 'p2p';
+      // Fallback endpoint value just in case
+      this.serverEndpoint = 'wss://xyrtania-server.onrender.com';
+      this.client = new Client(this.serverEndpoint);
+      this.connectToP2P();
+    } else if (savedMode === 'colyseus_local') {
+      this.connectionMode = 'colyseus_local';
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      this.serverEndpoint = `${protocol}//${window.location.host}`;
+      this.client = new Client(this.serverEndpoint);
+      this.connectToServer();
+    } else {
+      // Default to Production Render Colyseus Server!
+      this.connectionMode = 'colyseus_render';
+      this.serverEndpoint = 'wss://xyrtania-server.onrender.com';
+      this.client = new Client(this.serverEndpoint);
+      this.connectToServer();
+    }
+  }
+
+  public setConnectionMode(mode: 'colyseus_render' | 'colyseus_local' | 'p2p') {
+    if (this.connectionMode === mode) return;
+    
+    localStorage.setItem('xyrtania_connection_mode', mode);
+    this.disconnect();
+    
+    this.connectionMode = mode;
+    this.isDisconnected = false;
+    
+    if (mode === 'colyseus_render') {
+      this.serverEndpoint = 'wss://xyrtania-server.onrender.com';
+      this.client = new Client(this.serverEndpoint);
+      this.connectToServer();
+    } else if (mode === 'colyseus_local') {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      this.serverEndpoint = `${protocol}//${window.location.host}`;
+      this.client = new Client(this.serverEndpoint);
+      this.connectToServer();
+    } else {
+      this.connectToP2P();
+    }
+  }
+
+  private async connectToP2P() {
+    this.peers.clear();
+    if (this.onPeersChange) this.onPeersChange(0);
+    this.status = 'reconnecting';
+    if (this.onStatusChange) this.onStatusChange(this.status);
+    
+    try {
+      console.log(`Connecting to Trystero P2P Torrent room: ${this.roomName}...`);
       
-    this.client = new Client(this.serverEndpoint);
-    this.connectToServer();
+      const config = { appId: 'xyrtania-world-1' };
+      this.p2pRoom = joinRoom(config, this.roomName);
+      this.roomId = `p2p-${this.roomName}`;
+      this.status = 'connected';
+      
+      if (this.onStatusChange) this.onStatusChange(this.status, this.roomId);
+      
+      const [sendMove, getMove] = this.p2pRoom.makeAction('move');
+      const [sendAnimation, getAnimation] = this.p2pRoom.makeAction('animation');
+      
+      this.p2pActions = { sendMove, sendAnimation };
+      
+      this.p2pRoom.onPeerJoin((peerId: string) => {
+        console.log("P2P Player connected:", peerId);
+        
+        this.peers.set(peerId, {
+          id: peerId,
+          state: this.createEmptyState(),
+          lastUpdate: performance.now()
+        });
+        
+        if (this.lastKnownState) {
+          sendMove(this.serializeState(this.lastKnownState), peerId);
+        }
+        
+        if (this.onPeersChange) this.onPeersChange(this.peers.size);
+        if (this.onPeerJoin) this.onPeerJoin(peerId);
+      });
+      
+      this.p2pRoom.onPeerLeave((peerId: string) => {
+        console.log("P2P Player disconnected:", peerId);
+        this.peers.delete(peerId);
+        if (this.onPeersChange) this.onPeersChange(this.peers.size);
+        if (this.onPeerLeave) this.onPeerLeave(peerId);
+      });
+      
+      getMove((data: any, peerId: string) => {
+        let peer = this.peers.get(peerId);
+        if (!peer) {
+          this.peers.set(peerId, {
+            id: peerId,
+            state: this.createEmptyState(),
+            lastUpdate: performance.now()
+          });
+          peer = this.peers.get(peerId)!;
+          if (this.onPeersChange) this.onPeersChange(this.peers.size);
+          if (this.onPeerJoin) this.onPeerJoin(peerId);
+        }
+        
+        peer.lastUpdate = performance.now();
+        
+        // Apply deserialized state
+        if (data.x !== undefined) peer.state.position.x = data.x;
+        if (data.y !== undefined) peer.state.position.y = data.y;
+        if (data.z !== undefined) peer.state.position.z = data.z;
+        if (data.rotation !== undefined) peer.state.direction = data.rotation;
+        
+        if (data.customColor !== undefined) peer.state.customColor = data.customColor;
+        if (data.customScale !== undefined) peer.state.customScale = data.customScale;
+        
+        if (data.displayName !== undefined && data.displayName !== peer.state.displayName) {
+          peer.state.displayName = data.displayName;
+          if (this.onPeerDisplayNameChange) {
+            this.onPeerDisplayNameChange(peerId, data.displayName);
+          }
+        }
+        
+        if (data.avatarId !== undefined) peer.state.modelUrl = data.avatarId;
+        
+        if (data.animationState !== undefined && data.animationState !== peer.state.animationState) {
+          peer.state.animationState = data.animationState;
+          if (this.onPeerAnimationStateChange) {
+            this.onPeerAnimationStateChange(peerId, data.animationState);
+          }
+        }
+        peer.state.currentAnimation = data.currentAnimation || 'neutral_idle';
+        peer.state.isCrouching = !!data.isCrouching;
+        peer.state.isProne = !!data.isProne;
+      });
+      
+      getAnimation((data: any, peerId: string) => {
+        const peer = this.peers.get(peerId);
+        if (peer && data.animationState !== undefined && data.animationState !== peer.state.animationState) {
+          peer.state.animationState = data.animationState;
+          if (this.onPeerAnimationStateChange) {
+            this.onPeerAnimationStateChange(peerId, data.animationState);
+          }
+        }
+      });
+      
+    } catch (e: any) {
+      console.error("P2P Room connection failed:", e);
+      this.status = 'disconnected';
+      if (this.onStatusChange) this.onStatusChange(this.status);
+    }
   }
 
   private async connectToServer() {
@@ -245,30 +410,48 @@ export class NetworkManager {
       }
   }
 
+  private serializeState(state: PlayerState) {
+    const currentAnim = state.animationState || state.currentAnimation || 'neutral_idle';
+    return {
+        x: typeof state.position.x === 'number' ? state.position.x : 0,
+        y: typeof state.position.y === 'number' ? state.position.y : 0,
+        z: typeof state.position.z === 'number' ? state.position.z : 0,
+        rotation: typeof state.direction === 'number' ? state.direction : 0,
+        avatarId: state.modelUrl || "",
+        displayName: state.displayName || "Anonymous",
+        currentAnimation: currentAnim,
+        animationState: currentAnim,
+        customColor: state.customColor || "",
+        customScale: typeof state.customScale === 'number' ? state.customScale : 1.0,
+        isCrouching: !!state.isCrouching,
+        isProne: !!state.isProne
+    };
+  }
+
   public broadcastState(state: PlayerState) {
     this.lastKnownState = state;
     
-    if (this.room) {
-        const currentAnim = state.animationState || state.currentAnimation || 'neutral_idle';
-        if (currentAnim !== this.lastSentAnimation) {
-            this.room.send("setAnimation", currentAnim);
-            this.lastSentAnimation = currentAnim;
-        }
+    if (this.connectionMode !== 'p2p') {
+      if (this.room) {
+          const currentAnim = state.animationState || state.currentAnimation || 'neutral_idle';
+          if (currentAnim !== this.lastSentAnimation) {
+              this.room.send("setAnimation", currentAnim);
+              this.lastSentAnimation = currentAnim;
+          }
 
-        this.room.send("move", {
-            x: typeof state.position.x === 'number' ? state.position.x : 0,
-            y: typeof state.position.y === 'number' ? state.position.y : 0,
-            z: typeof state.position.z === 'number' ? state.position.z : 0,
-            rotation: typeof state.direction === 'number' ? state.direction : 0,
-            avatarId: state.modelUrl || "",
-            displayName: state.displayName || "Anonymous",
-            currentAnimation: currentAnim,
-            animationState: currentAnim,
-            customColor: state.customColor || "",
-            customScale: typeof state.customScale === 'number' ? state.customScale : 1.0,
-            isCrouching: !!state.isCrouching,
-            isProne: !!state.isProne
-        });
+          this.room.send("move", this.serializeState(state));
+      }
+    } else {
+      if (this.p2pActions?.sendMove) {
+          const currentAnim = state.animationState || state.currentAnimation || 'neutral_idle';
+          if (currentAnim !== this.lastSentAnimation) {
+              if (this.p2pActions.sendAnimation) {
+                  this.p2pActions.sendAnimation({ animationState: currentAnim });
+              }
+              this.lastSentAnimation = currentAnim;
+          }
+          this.p2pActions.sendMove(this.serializeState(state));
+      }
     }
   }
   
@@ -287,7 +470,7 @@ export class NetworkManager {
   
   public getNearbyPeers(center: THREE.Vector3, maxDistance: number): RemotePlayer[] {
       const nearby: RemotePlayer[] = [];
-      const localId = this.room?.sessionId;
+      const localId = this.sessionId;
       for (const peer of this.peers.values()) {
          if (localId && peer.id === localId) {
             continue; // Ensure local player is never returned as a nearby peer
@@ -305,6 +488,16 @@ export class NetworkManager {
       this.isDisconnected = true;
       if (this.room) {
           this.room.leave();
+          this.room = undefined;
+      }
+      if (this.p2pRoom) {
+          try {
+              this.p2pRoom.leave();
+          } catch (e) {
+              console.warn("Error leaving P2P room:", e);
+          }
+          this.p2pRoom = undefined;
+          this.p2pActions = undefined;
       }
   }
 }
