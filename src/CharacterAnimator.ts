@@ -4,11 +4,12 @@ import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { PlayerState, JumpPhase } from './types';
 
 export const MODEL_SCALE_CONFIG: Record<string, { targetDepth?: number; targetWidth?: number; targetHeight?: number; scaleOverride?: number }> = {
-  'bob.fbx': { targetDepth: 1.2 }, // Stylized reference (Z-depth of 54.6 scaled to 1.2)
-  'base_male.fbx': { targetDepth: 1.2 },
-  'Unarmed_Idle.fbx': { targetDepth: 1.2 },
-  'Breathing_Idle.fbx': { targetDepth: 1.2 },
-  'default': { targetDepth: 1.2 }
+  'bob.fbx': { targetHeight: 2.14 },
+  'base_male.fbx': { targetHeight: 2.14 },
+  'base_male_0.fbx': { targetHeight: 2.14 },
+  'Unarmed_Idle.fbx': { targetHeight: 2.14 },
+  'Breathing_Idle.fbx': { targetHeight: 2.14 },
+  'default': { targetHeight: 2.14 }
 };
 
 export class CharacterAnimator {
@@ -29,6 +30,9 @@ export class CharacterAnimator {
   public currentActionName: string = 'neutral_idle';
   public isRemote: boolean = false;
   
+  public customColor: string | null = null;
+  public customScale: number = 1.0;
+  
   private static modelCache = new Map<string, Promise<THREE.Group>>();
   private static animCache = new Map<string, Promise<THREE.Group>>();
   private static textureCache = new Map<string, Promise<THREE.Texture>>();
@@ -48,6 +52,7 @@ export class CharacterAnimator {
         '/assets/character/animations/crouch_idle.fbx',
         '/assets/character/animations/crouched_walking.fbx',
         '/assets/character/animations/prone_forward.fbx',
+        '/assets/character/animations/breathing_idle.fbx',
       ];
 
       // Preload animations silently in the background
@@ -174,7 +179,12 @@ export class CharacterAnimator {
         scaleAmount = 1.2 / (size.z || 1);
       }
 
-      object.scale.setScalar(scaleAmount);
+      if (modelUrl.includes('base_male_0')) {
+        // Broaden width (X) and increase depth (Z) to match the explorer's robust bulk and chest depth
+        object.scale.set(scaleAmount * 1.35, scaleAmount, scaleAmount * 1.55);
+      } else {
+        object.scale.setScalar(scaleAmount);
+      }
       
       const boxScaled = new THREE.Box3().setFromObject(object);
       const sizeScaled = boxScaled.getSize(new THREE.Vector3());
@@ -188,7 +198,7 @@ export class CharacterAnimator {
       object.position.set(0, this.baseYOffset, 0);
       this.innerMesh = object;
 
-      const isCustomTripoModel = modelUrl.includes('humanoid') || modelUrl.includes('explorer_clone');
+      const isCustomTripoModel = modelUrl.includes('humanoid') || modelUrl.includes('explorer_clone') || modelUrl.includes('base_male_0');
       let colorMap: THREE.Texture | null = null;
       let normalMap: THREE.Texture | null = null;
       let metallicMap: THREE.Texture | null = null;
@@ -310,6 +320,7 @@ export class CharacterAnimator {
         { name: 'crouch_idle', url: '/assets/character/animations/crouch_idle.fbx' },
         { name: 'crouched_walking', url: '/assets/character/animations/crouched_walking.fbx' },
         { name: 'prone_forward', url: '/assets/character/animations/prone_forward.fbx' },
+        { name: 'breathing_idle', url: '/assets/character/animations/breathing_idle.fbx' },
       ];
       
       await Promise.all(animationsToLoad.map(async (anim) => {
@@ -353,6 +364,8 @@ export class CharacterAnimator {
       // Triggers stored animation state, defaulting to 'neutral_idle' or 'idle'
       this.playAction(this.currentActionName || 'idle', 0);
       
+      this.setCustomization(this.customColor, this.customScale);
+      
     } catch (err) {
       console.error('Error loading base mesh', err);
       // Fallback placeholder mesh
@@ -374,19 +387,39 @@ export class CharacterAnimator {
     // Map animation names dynamically if not found in Mixer actions
     let mappedName = name;
     if (!this.actions[mappedName]) {
-       if (name === 'idle') mappedName = 'neutral_idle';
-       if (name === 'crouch') mappedName = 'crouch_idle';
-       if (name === 'prone') mappedName = 'prone_forward';
-       if (name === 'walk') mappedName = 'walk';
-       if (name === 'jog') mappedName = 'jog';
-       if (name === 'run') mappedName = 'run';
-       if (name === 'jump') mappedName = 'jump';
-       if (name === 'pushing') mappedName = 'pushing';
-       if (name === 'swim') mappedName = 'swim';
-       if (name === 'tread') mappedName = 'tread';
+       if (name === 'idle') {
+          if (this.actions['neutral_idle']) mappedName = 'neutral_idle';
+          else if (this.actions['breathing_idle']) mappedName = 'breathing_idle';
+       } else if (name === 'neutral_idle') {
+          if (this.actions['breathing_idle']) mappedName = 'breathing_idle';
+          else if (this.actions['idle']) mappedName = 'idle';
+       } else if (name === 'crouch') {
+          mappedName = 'crouch_idle';
+       } else if (name === 'prone') {
+          mappedName = 'prone_forward';
+       } else if (name === 'walk') {
+          mappedName = 'walk';
+       } else if (name === 'jog') {
+          mappedName = 'jog';
+       } else if (name === 'run') {
+          mappedName = 'run';
+       } else if (name === 'jump') {
+          mappedName = 'jump';
+       } else if (name === 'pushing') {
+          mappedName = 'pushing';
+       } else if (name === 'swim') {
+          mappedName = 'swim';
+       } else if (name === 'tread') {
+          mappedName = 'tread';
+       }
     }
 
-    const nextAction = this.actions[mappedName];
+    let nextAction = this.actions[mappedName];
+    if (!nextAction) {
+       if (mappedName === 'neutral_idle' || mappedName === 'breathing_idle' || mappedName === 'idle') {
+          nextAction = this.actions['neutral_idle'] || this.actions['breathing_idle'] || this.actions['idle'];
+       }
+    }
     if (!nextAction) return;
     if (nextAction === this.activeAction) return;
 
@@ -412,6 +445,52 @@ export class CharacterAnimator {
     nextAction.play();
     
     this.activeAction = nextAction;
+  }
+
+  private lastAppliedColor: string | null = null;
+  private lastAppliedScale: number | null = null;
+
+  public setCustomization(color: string | null, scale: number) {
+    if (this.lastAppliedColor === color && this.lastAppliedScale === scale) return;
+
+    this.customColor = color;
+    this.customScale = scale;
+    this.lastAppliedColor = color;
+    this.lastAppliedScale = scale;
+
+    // Apply scale directly to the main group
+    if (this.innerMesh) {
+      this.group.scale.setScalar(scale);
+    }
+
+    // Apply color to materials
+    if (this.innerMesh && color) {
+      const c = new THREE.Color(color);
+      this.innerMesh.traverse((child: any) => {
+        if (child.isMesh && child.material) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach((mat: any) => {
+            if (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial || mat.isMeshPhongMaterial) {
+              mat.color.copy(c);
+              mat.needsUpdate = true;
+            }
+          });
+        }
+      });
+    } else if (this.innerMesh && !color) {
+        // Reset color if removed (optional improvement)
+        this.innerMesh.traverse((child: any) => {
+            if (child.isMesh && child.material) {
+              const mats = Array.isArray(child.material) ? child.material : [child.material];
+              mats.forEach((mat: any) => {
+                if (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial || mat.isMeshPhongMaterial) {
+                  mat.color.setHex(0xffffff);
+                  mat.needsUpdate = true;
+                }
+              });
+            }
+          });
+    }
   }
 
   public updateNametag(name: string) {
@@ -476,11 +555,13 @@ export class CharacterAnimator {
        let targetY = this.baseYOffset;
        let targetRotX = 0;
        if (isProne) {
-           targetY = this.baseYOffset - 0.60;
+           // Scale prone offset proportionally to hip height (baseYOffset)
+           targetY = this.baseYOffset - (this.baseYOffset * 0.793);
        } else if (isCrouching) {
            // Lower slightly more and tilt forward so heels touch ground
            // If moving, don't lower as much to avoid clipping into the ground
-           targetY = this.baseYOffset - (state.speed > 0.1 ? 0.20 : 0.35);
+           const crouchFactor = state.speed > 0.1 ? 0.264 : 0.462;
+           targetY = this.baseYOffset - (this.baseYOffset * crouchFactor);
            targetRotX = 0.12; 
        }
        

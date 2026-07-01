@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'; // Trigger file watcher
 import * as THREE from 'three';
-import { Maximize } from 'lucide-react';
+import { Maximize, Palette } from 'lucide-react';
 import { WorldGrid } from './WorldGrid';
 import { PlayerState, JumpPhase } from './types';
 import { CharacterAnimator } from './CharacterAnimator';
@@ -29,10 +29,29 @@ export default function App() {
   const [showHud, setShowHud] = useState(true);
   const [isFakeFullscreen, setIsFakeFullscreen] = useState(false);
   const [gamepadName, setGamepadName] = useState<string | null>(null);
+  
+  const [showCustomizer, setShowCustomizer] = useState(false);
+  const [customColor, setCustomColor] = useState<string>('#ffffff');
+  const [customScale, setCustomScale] = useState<number>(1.0);
+  const [graphicsQuality, setGraphicsQuality] = useState<'high' | 'medium' | 'low'>('high');
+
+  const graphicsQualityRef = useRef(graphicsQuality);
+  useEffect(() => {
+    graphicsQualityRef.current = graphicsQuality;
+    window.dispatchEvent(new Event('resize'));
+  }, [graphicsQuality]);
+
+  const localAnimatorRef = useRef<CharacterAnimator | null>(null);
 
   // References to invoke in-game actions from absolute HTML DOM target elements
   const triggerJumpRef = useRef<() => void>(() => {});
   const switchCharacterRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    if (localAnimatorRef.current) {
+      localAnimatorRef.current.setCustomization(customColor, customScale);
+    }
+  }, [customColor, customScale]);
 
   // Fullscreen support state detection
   useEffect(() => {
@@ -200,6 +219,7 @@ export default function App() {
 
     // Explorer Character Mesh (FBX + Animations)
     const animator = new CharacterAnimator();
+    localAnimatorRef.current = animator;
     playerRootGroup.add(animator.group);
     animator.loadModelAndAnimations().catch((err) => console.error(err));
 
@@ -519,6 +539,29 @@ export default function App() {
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
 
+      // Optimize pixelRatio dynamically to prevent frame drops in fullscreen / high resolution
+      const quality = graphicsQualityRef.current;
+      let maxPixelRatio = 1.5;
+      
+      if (quality === 'high') {
+        // High quality: 1.5 max pixel ratio under normal, 1.25 in fullscreen to optimize fill rate
+        maxPixelRatio = document.fullscreenElement ? 1.25 : 1.5;
+        sunLight.castShadow = true;
+        renderer.shadowMap.enabled = true;
+      } else if (quality === 'medium') {
+        // Medium quality: 1.0 max pixel ratio (sharp, but much fewer pixels than 1.5/2.0), shadows enabled
+        maxPixelRatio = 1.0;
+        sunLight.castShadow = true;
+        renderer.shadowMap.enabled = true;
+      } else { // 'low'
+        // Low quality: 0.85 max pixel ratio (sub-sampled), shadows disabled completely for peak performance
+        maxPixelRatio = 0.85;
+        sunLight.castShadow = false;
+        renderer.shadowMap.enabled = false;
+      }
+      
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxPixelRatio));
+
       // Update HUD Camera projection mapping
       hudCamera.left = -w / 2;
       hudCamera.right = w / 2;
@@ -600,6 +643,7 @@ export default function App() {
 
     const characters = [
       '/assets/character/base_male.fbx', 
+      '/assets/character/base_male_0/base_male_0.fbx',
       '/assets/character/bob.fbx',
       '/assets/character/humanoid/Unarmed_Idle.fbx',
       '/assets/character/explorer_clone/Breathing_Idle.fbx'
@@ -1474,13 +1518,24 @@ export default function App() {
 
       // Keep orbital focus locked on explorer chest height
       const heightScale = animator.targetHeight / 2.2;
-      const focalPointHeight = animator.targetHeight * 0.65;
+      let focalPointHeight = animator.targetHeight * 0.65;
+      if (state.isProne) {
+        focalPointHeight = animator.targetHeight * 0.15;
+      } else if (state.isCrouching) {
+        focalPointHeight = animator.targetHeight * 0.42;
+      }
       const focalPoint = state.position.clone().add(new THREE.Vector3(0, focalPointHeight, 0));
 
       // Calculate dynamic distance: Zoom in when looking up or down
       const pitchRatio = Math.abs(cameraPitch) / 1.4;
       const scaledBaseDistance = baseCameraDistance * heightScale;
-      const currentCamDist = scaledBaseDistance - ((3.8 * heightScale) * pitchRatio);
+      let currentCamDist = scaledBaseDistance - ((3.8 * heightScale) * pitchRatio);
+
+      // Dampen the running zoom-out lag specifically for the bulkier character (base_male_0)
+      if (animator.currentModelUrl && animator.currentModelUrl.includes('base_male_0')) {
+        const speedFactor = Math.min(1.0, state.speed / 18);
+        currentCamDist -= speedFactor * 1.25;
+      }
 
       const dynamicOffset = new THREE.Vector3(
         currentCamDist * Math.sin(cameraYaw) * Math.cos(cameraPitch),
@@ -1564,6 +1619,9 @@ export default function App() {
         if (peer.state.displayName) {
            remAnim.updateNametag(peer.state.displayName);
         }
+
+        // Apply Customizations
+        remAnim.setCustomization(peer.state.customColor || null, peer.state.customScale || 1.0);
       }
       
       // Cleanup disconnected or distant peers
@@ -1614,6 +1672,8 @@ export default function App() {
         state.modelUrl = animator.currentModelUrl;
         state.currentAnimation = animator.currentActionName;
         state.animationState = animator.currentActionName;
+        state.customColor = animator.customColor || undefined;
+        state.customScale = animator.customScale;
         animator.updateNametag(state.displayName);
         networkManager.broadcastState(state);
 
@@ -1746,6 +1806,13 @@ export default function App() {
       {/* HUD UI Elements */}
       <div className="absolute top-4 right-4 z-50 flex gap-2 items-center">
         <button
+          onClick={() => setShowCustomizer(!showCustomizer)}
+          className={`bg-black/60 border ${showCustomizer ? 'border-cyan-400 text-cyan-300' : 'border-cyan-500/30 text-cyan-400'} p-2 rounded hover:bg-black/80 transition-colors backdrop-blur pointer-events-auto flex items-center justify-center`}
+          title="Customize Character"
+        >
+          <Palette className="w-5 h-5" />
+        </button>
+        <button
           onClick={() => {
             if (!document.fullscreenElement) {
               document.documentElement.requestFullscreen().catch((err) => {
@@ -1769,6 +1836,71 @@ export default function App() {
           Switch Character (C)
         </button>
       </div>
+
+      {/* Character Customizer Overlay */}
+      {showCustomizer && (
+        <div className="absolute top-20 right-4 w-64 bg-black/80 backdrop-blur-md border border-cyan-500/30 rounded-lg p-4 z-50 pointer-events-auto flex flex-col gap-4 shadow-2xl">
+          <div className="flex justify-between items-center border-b border-cyan-500/30 pb-2">
+            <h3 className="text-cyan-400 font-mono text-sm uppercase tracking-wider">Customizer</h3>
+            <button onClick={() => setShowCustomizer(false)} className="text-cyan-500 hover:text-cyan-300">
+              ✕
+            </button>
+          </div>
+          
+          <div className="flex flex-col gap-2">
+            <label className="text-xs text-cyan-200 font-mono tracking-wide">Skin Color</label>
+            <div className="flex gap-2">
+              <input 
+                type="color" 
+                value={customColor} 
+                onChange={(e) => setCustomColor(e.target.value)}
+                className="w-full h-8 rounded cursor-pointer bg-transparent border border-cyan-500/50"
+              />
+            </div>
+          </div>
+          
+          <div className="flex flex-col gap-2">
+            <label className="text-xs text-cyan-200 font-mono tracking-wide flex justify-between">
+              <span>Height / Scale</span>
+              <span>{customScale.toFixed(2)}x</span>
+            </label>
+            <input 
+              type="range" 
+              min="0.5" 
+              max="1.5" 
+              step="0.05"
+              value={customScale}
+              onChange={(e) => setCustomScale(parseFloat(e.target.value))}
+              className="w-full accent-cyan-400"
+            />
+          </div>
+
+          <div className="border-t border-cyan-500/30 pt-3 flex flex-col gap-2">
+            <label className="text-xs text-cyan-200 font-mono tracking-wide flex justify-between">
+              <span>Graphics Quality</span>
+              <span className="text-[10px] text-cyan-400 uppercase font-bold">{graphicsQuality}</span>
+            </label>
+            <div className="grid grid-cols-3 gap-1 bg-black/40 p-1 rounded border border-cyan-500/20">
+              {(['low', 'medium', 'high'] as const).map((q) => (
+                <button
+                  key={q}
+                  onClick={() => setGraphicsQuality(q)}
+                  className={`py-1 text-[10px] font-mono uppercase rounded transition-all cursor-pointer ${
+                    graphicsQuality === q
+                      ? 'bg-cyan-500 text-black font-bold shadow-[0_0_8px_rgba(6,182,212,0.4)]'
+                      : 'text-cyan-400 hover:bg-cyan-500/10'
+                  }`}
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+            <p className="text-[9px] text-cyan-200/50 leading-normal">
+              Adjusts WebGL internal scaling and shadows to maintain 60 FPS on high-DPI displays.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Main Viewport Content - WebGL Canvas inside the underlaid layout */}
       <div className="absolute inset-0 z-10 pointer-events-none">

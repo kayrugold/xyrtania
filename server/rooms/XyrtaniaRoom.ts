@@ -11,6 +11,8 @@ export class Player extends Schema {
   @type("string") currentAnimation: string = "";
   @type("string") animationState: string = "";
   @type("string") displayName: string = "";
+  @type("string") customColor: string = "";
+  @type("number") customScale: number = 1.0;
   @type("boolean") isCrouching: boolean = false;
   @type("boolean") isProne: boolean = false;
 }
@@ -34,6 +36,8 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
         if (data.currentAnimation !== undefined) player.currentAnimation = data.currentAnimation;
         if (data.animationState !== undefined) player.animationState = data.animationState;
         if (data.displayName !== undefined) player.displayName = data.displayName;
+        if (data.customColor !== undefined) player.customColor = data.customColor;
+        if (data.customScale !== undefined) player.customScale = data.customScale;
         if (data.isCrouching !== undefined) player.isCrouching = data.isCrouching;
         if (data.isProne !== undefined) player.isProne = data.isProne;
       }

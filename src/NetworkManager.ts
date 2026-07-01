@@ -29,11 +29,9 @@ export class NetworkManager {
   }
 
   constructor(appId: string, roomName: string) {
-    // Fallback to local server on localhost, otherwise connect to user's Render server
-    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    const endpoint = isLocal 
-      ? 'ws://localhost:3000' 
-      : 'wss://xyrtania-server.onrender.com';
+    // Dynamically connect to the local full-stack container server via current host and protocol
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const endpoint = `${protocol}//${window.location.host}`;
       
     this.client = new Client(endpoint);
     this.connectToServer();
@@ -45,19 +43,21 @@ export class NetworkManager {
       const initialDisplayName = localStorage.getItem('xyrtania_display_name') || 'Anonymous';
       const initialAvatarId = '/assets/character/base_male.fbx'; // default
 
-      const savedRoomId = localStorage.getItem('xyrtania_last_room_id');
-      const savedSessionId = localStorage.getItem('xyrtania_last_session_id');
+      // Clean up any stale old-format session variables
+      localStorage.removeItem('xyrtania_last_room_id');
+      localStorage.removeItem('xyrtania_last_session_id');
+
+      const savedToken = localStorage.getItem('xyrtania_reconnection_token');
 
       let room: Room;
-      if (savedRoomId && savedSessionId) {
+      if (savedToken) {
         try {
-          console.log(`Attempting silent reconnect to room: ${savedRoomId}, session: ${savedSessionId}...`);
-          room = await this.client.reconnect(savedRoomId, savedSessionId);
+          console.log(`Attempting silent reconnect using stored reconnection token...`);
+          room = await this.client.reconnect(savedToken);
           console.log("Successfully reconnected using stored session credentials!");
         } catch (reconnectErr) {
           console.warn("Silent reconnection failed, falling back to join or create:", reconnectErr);
-          localStorage.removeItem('xyrtania_last_room_id');
-          localStorage.removeItem('xyrtania_last_session_id');
+          localStorage.removeItem('xyrtania_reconnection_token');
           room = await this.client.joinOrCreate("xyrtania_room", {
               displayName: initialDisplayName,
               avatarId: initialAvatarId
@@ -87,9 +87,10 @@ export class NetworkManager {
   }
 
   private setupRoomListeners(room: Room) {
-      // Persist credentials for mobile/reload silent reconnection
-      localStorage.setItem('xyrtania_last_room_id', room.roomId);
-      localStorage.setItem('xyrtania_last_session_id', room.sessionId);
+      // Persist reconnection token for mobile/reload silent reconnection
+      if (room.reconnectionToken) {
+          localStorage.setItem('xyrtania_reconnection_token', room.reconnectionToken);
+      }
 
       room.state.players.onAdd((player: any, sessionId: string) => {
           if (sessionId === room.sessionId) {
@@ -165,18 +166,22 @@ export class NetworkManager {
           console.log("Left room with code:", code);
           // 1000 is normal/consented close
           if (code !== 1000 && !this.isDisconnected) {
-              this.handleReconnection(room.roomId, room.sessionId);
+              const token = room.reconnectionToken || localStorage.getItem('xyrtania_reconnection_token');
+              if (token) {
+                  this.handleReconnection(token);
+              } else {
+                  this.connectToServer();
+              }
           } else {
-              localStorage.removeItem('xyrtania_last_room_id');
-              localStorage.removeItem('xyrtania_last_session_id');
+              localStorage.removeItem('xyrtania_reconnection_token');
           }
       });
   }
 
-  private async handleReconnection(roomId: string, sessionId: string) {
+  private async handleReconnection(token: string) {
       if (this.isReconnecting || this.isDisconnected) return;
       this.isReconnecting = true;
-      console.log(`Lost connection unexpectedly. Attempting seamless reconnection for session ${sessionId} in room ${roomId}...`);
+      console.log(`Lost connection unexpectedly. Attempting seamless reconnection using reconnection token...`);
 
       let attempts = 0;
       const maxAttempts = 10; // increase maxAttempts for mobile reconnection resiliency
@@ -185,7 +190,7 @@ export class NetworkManager {
           try {
               attempts++;
               console.log(`Reconnection attempt ${attempts}/${maxAttempts}...`);
-              const reconnectedRoom = await this.client.reconnect(roomId, sessionId);
+              const reconnectedRoom = await this.client.reconnect(token);
               
               // Successfully reconnected!
               this.room = reconnectedRoom;
@@ -204,6 +209,7 @@ export class NetworkManager {
       this.isReconnecting = false;
       if (!this.isDisconnected) {
           console.log("Reconnection attempts exhausted. Joining or creating a new room session...");
+          localStorage.removeItem('xyrtania_reconnection_token');
           this.connectToServer();
       }
   }
@@ -219,16 +225,18 @@ export class NetworkManager {
         }
 
         this.room.send("move", {
-            x: state.position.x,
-            y: state.position.y,
-            z: state.position.z,
-            rotation: state.direction,
-            avatarId: state.modelUrl,
-            displayName: state.displayName,
+            x: typeof state.position.x === 'number' ? state.position.x : 0,
+            y: typeof state.position.y === 'number' ? state.position.y : 0,
+            z: typeof state.position.z === 'number' ? state.position.z : 0,
+            rotation: typeof state.direction === 'number' ? state.direction : 0,
+            avatarId: state.modelUrl || "",
+            displayName: state.displayName || "Anonymous",
             currentAnimation: currentAnim,
             animationState: currentAnim,
-            isCrouching: state.isCrouching || false,
-            isProne: state.isProne || false
+            customColor: state.customColor || "",
+            customScale: typeof state.customScale === 'number' ? state.customScale : 1.0,
+            isCrouching: !!state.isCrouching,
+            isProne: !!state.isProne
         });
     }
   }

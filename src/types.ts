@@ -15,6 +15,8 @@ export interface PlayerState {
   modelUrl?: string;
   currentAnimation?: string;
   animationState?: string;
+  customColor?: string;
+  customScale?: number;
   position: THREE.Vector3;
   velocity: THREE.Vector3;
   direction: number; // yaw angle in radians
