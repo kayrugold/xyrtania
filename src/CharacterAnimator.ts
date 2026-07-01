@@ -5,13 +5,8 @@ import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { PlayerState, JumpPhase } from './types';
 
 export const MODEL_SCALE_CONFIG: Record<string, { targetDepth?: number; targetWidth?: number; targetHeight?: number; scaleOverride?: number }> = {
-  'bob.fbx': { targetHeight: 2.14 },
-  'base_male.fbx': { targetHeight: 2.14 },
+  '/assets/character/peter/peteridle.fbx': { targetHeight: 2.14 },
   'base_male_0.fbx': { targetHeight: 2.14 },
-  'Unarmed_Idle.fbx': { targetHeight: 2.14 },
-  'Breathing_Idle.fbx': { targetHeight: 2.14 },
-  'humanoid.fbx': { targetHeight: 2.14 },
-  'explorer_clone.fbx': { targetHeight: 2.14 },
   'default': { targetHeight: 2.14 }
 };
 
@@ -32,6 +27,7 @@ export class CharacterAnimator {
   public currentModelUrl: string = '';
   public currentActionName: string = 'neutral_idle';
   public isRemote: boolean = false;
+  private blinkInterval: any = null;
   
   public customColor: string | null = null;
   public customScale: number = 1.0;
@@ -43,7 +39,7 @@ export class CharacterAnimator {
 
   public static async preloadCharacters(characterUrls: string[]) {
       const animations = [
-        '/assets/character/animations/idle.fbx',
+        '/assets/character/peter/peteridle.fbx',
         '/assets/character/animations/walk.fbx',
         '/assets/character/animations/jog.fbx',
         '/assets/character/animations/run.fbx',
@@ -51,12 +47,11 @@ export class CharacterAnimator {
         '/assets/character/animations/pushing.fbx',
         '/assets/character/animations/swim.fbx',
         '/assets/character/animations/tread.fbx',
-        '/assets/character/animations/neutral_idle.fbx',
-        '/assets/character/animations/climbing.fbx',
+        '/assets/character/peter/peteridle.fbx',
         '/assets/character/animations/crouch_idle.fbx',
-        '/assets/character/animations/crouched_walking.fbx',
+        '/assets/character/peter/peteridle.fbx',
         '/assets/character/animations/prone_forward.fbx',
-        '/assets/character/animations/breathing_idle.fbx',
+        '/assets/character/peter/peteridle.fbx',
       ];
 
       // Preload animations silently in the background
@@ -89,7 +84,8 @@ export class CharacterAnimator {
   private static getTexture(url: string): Promise<THREE.Texture> {
     if (!this.textureCache.has(url)) {
       const loader = new THREE.TextureLoader();
-      const promise = loader.loadAsync(url).catch((err) => {
+      const fetchUrl = url.includes('?') ? url : `${url}?v=3`;
+      const promise = loader.loadAsync(fetchUrl).catch((err) => {
         this.textureCache.delete(url);
         throw err;
       });
@@ -103,7 +99,8 @@ export class CharacterAnimator {
       const isGltf = url.toLowerCase().endsWith('.glb') || url.toLowerCase().endsWith('.gltf') || url.includes('.glb') || url.includes('.gltf');
       if (isGltf) {
         const loader = new GLTFLoader();
-        const promise = loader.loadAsync(url).then((gltf) => {
+        const fetchUrl = url.includes('?') ? url : `${url}?v=3`;
+        const promise = loader.loadAsync(fetchUrl).then((gltf) => {
           return gltf.scene;
         }).catch((err) => {
           this.modelCache.delete(url);
@@ -112,7 +109,8 @@ export class CharacterAnimator {
         this.modelCache.set(url, promise as any);
       } else {
         const loader = new FBXLoader();
-        const promise = loader.loadAsync(url).catch((err) => {
+        const fetchUrl = url.includes('?') ? url : `${url}?v=3`;
+        const promise = loader.loadAsync(fetchUrl).catch((err) => {
           this.modelCache.delete(url);
           throw err;
         });
@@ -125,7 +123,8 @@ export class CharacterAnimator {
   private static getAnimation(url: string): Promise<THREE.Group> {
     if (!this.animCache.has(url)) {
       const loader = new FBXLoader();
-      const promise = loader.loadAsync(url).catch((err) => {
+      const fetchUrl = url.includes('?') ? url : `${url}?v=3`;
+      const promise = loader.loadAsync(fetchUrl).catch((err) => {
         this.animCache.delete(url);
         throw err;
       });
@@ -151,7 +150,7 @@ export class CharacterAnimator {
       });
   }
 
-  public async loadModelAndAnimations(modelUrl: string = '/assets/character/base_male.fbx') {
+  public async loadModelAndAnimations(modelUrl: string = '/assets/character/peter/peteridle.fbx') {
     const requestedUrl = modelUrl;
     this.currentModelUrl = modelUrl;
     // Clear old group children except nametag
@@ -163,7 +162,11 @@ export class CharacterAnimator {
     });
     toRemove.forEach(c => {
         this.group.remove(c);
-        CharacterAnimator.disposeHierarchy(c);
+        c.traverse((child: any) => {
+            if (child.name === 'proceduralFace') {
+                CharacterAnimator.disposeHierarchy(child);
+            }
+        });
     });
     
     if (this.mixer) {
@@ -178,22 +181,17 @@ export class CharacterAnimator {
     const fbxLoader = new FBXLoader();
     
     try {
-      // First load the base mesh using cache, with a robust fallback to base_male.fbx
+      // First load the base mesh using cache, with a robust fallback to base_male_0.fbx
       let modelToLoad = modelUrl;
-      if (modelUrl.includes('humanoid.fbx')) {
-        modelToLoad = '/assets/character/humanoid/Unarmed_Idle.fbx';
-      } else if (modelUrl.includes('explorer_clone.fbx')) {
-        modelToLoad = '/assets/character/explorer_clone/Breathing_Idle.fbx';
-      }
 
       let cachedObject: THREE.Group;
       try {
         cachedObject = await CharacterAnimator.getModel(modelToLoad);
       } catch (loadErr) {
-        console.warn(`Failed to load requested model ${modelToLoad}, falling back to base_male.fbx`, loadErr);
-        if (modelToLoad !== '/assets/character/base_male.fbx') {
-          this.currentModelUrl = '/assets/character/base_male.fbx';
-          cachedObject = await CharacterAnimator.getModel('/assets/character/base_male.fbx');
+        console.warn(`Failed to load requested model ${modelToLoad}, falling back to peteridle.fbx`, loadErr);
+        if (modelToLoad !== '/assets/character/peter/peteridle.fbx') {
+          this.currentModelUrl = '/assets/character/peter/peteridle.fbx';
+          cachedObject = await CharacterAnimator.getModel('/assets/character/peter/peteridle.fbx');
         } else {
           throw loadErr;
         }
@@ -229,9 +227,11 @@ export class CharacterAnimator {
 
       if (requestedUrl.includes('base_male_0')) {
         // Broaden width (X) and increase depth (Z) to match the explorer's robust bulk and chest depth
-        object.scale.set(scaleAmount * 1.35, scaleAmount, scaleAmount * 1.55);
+        object.scale.x *= scaleAmount * 1.35;
+        object.scale.y *= scaleAmount;
+        object.scale.z *= scaleAmount * 1.55;
       } else {
-        object.scale.setScalar(scaleAmount);
+        object.scale.multiplyScalar(scaleAmount);
       }
       
       const boxScaled = new THREE.Box3().setFromObject(object);
@@ -243,19 +243,27 @@ export class CharacterAnimator {
       }
 
       this.baseYOffset = -boxScaled.min.y;
-      object.position.set(0, this.baseYOffset, 0);
       
-      this.innerMesh = object;
+      const innerWrapper = new THREE.Group();
+      innerWrapper.name = 'explorerInnerWrapper';
+      innerWrapper.add(object);
+      innerWrapper.position.set(0, this.baseYOffset, 0);
+      this.innerMesh = innerWrapper;
 
       const isGltf = requestedUrl.toLowerCase().endsWith('.glb') || requestedUrl.toLowerCase().endsWith('.gltf') || requestedUrl.includes('.glb') || requestedUrl.includes('.gltf');
-      const isCustomTripoModel = !isGltf && (requestedUrl.includes('humanoid') || requestedUrl.includes('explorer_clone') || requestedUrl.includes('base_male_0'));
+      const isCustomTripoModel = !isGltf && (requestedUrl.includes('base_male_0') || requestedUrl.includes('peter'));
       let colorMap: THREE.Texture | null = null;
       let normalMap: THREE.Texture | null = null;
       let metallicMap: THREE.Texture | null = null;
       let roughnessMap: THREE.Texture | null = null;
       
       if (isCustomTripoModel) {
-          const basePath = requestedUrl.substring(0, requestedUrl.lastIndexOf('/'));
+          let basePath = requestedUrl.substring(0, requestedUrl.lastIndexOf('/'));
+          if (requestedUrl.includes('base_male_0.fbx') && !requestedUrl.includes('base_male_0/')) {
+              basePath = '/assets/character/base_male_0';
+          } else if (requestedUrl.includes('peteridle.fbx')) {
+              basePath = '/assets/character/peter';
+          }
           try {
               colorMap = await CharacterAnimator.getTexture(`${basePath}/Color.png`);
               colorMap.colorSpace = THREE.SRGBColorSpace;
@@ -280,38 +288,41 @@ export class CharacterAnimator {
       }
       
       let foundBone = false;
+      let rootMeshName = '';
       let meshHipsRestingPosition = new THREE.Vector3();
       object.traverse((child: any) => {
         if (child.isMesh) {
+          if (!rootMeshName) rootMeshName = child.name;
           child.castShadow = true;
           child.receiveShadow = true;
+          child.frustumCulled = false; // Prevent culling when animated/scaled
+          
           if (isCustomTripoModel && child.material) {
               const applyMaps = (origMat: any) => {
+                  let mat: any;
                   if (origMat.isMeshStandardMaterial || origMat.isMeshPhysicalMaterial) {
-                      const mat = origMat.clone();
-                      if (colorMap) mat.map = colorMap;
-                      if (normalMap) mat.normalMap = normalMap;
-                      if (metallicMap) mat.metalnessMap = metallicMap;
-                      if (roughnessMap) mat.roughnessMap = roughnessMap;
-                      mat.color.setRGB(1, 1, 1);
-                      mat.needsUpdate = true;
-                      return mat;
-                  } else if (origMat.isMeshPhongMaterial) {
-                      const newMat = new THREE.MeshStandardMaterial();
-                      if (colorMap) newMat.map = colorMap;
-                      if (normalMap) newMat.normalMap = normalMap;
-                      if (metallicMap) newMat.metalnessMap = metallicMap;
-                      if (roughnessMap) newMat.roughnessMap = roughnessMap;
-                      newMat.color.setRGB(1, 1, 1);
-                      newMat.needsUpdate = true;
-                      return newMat;
+                      mat = origMat.clone();
                   } else {
-                      const mat = origMat.clone();
-                      if (colorMap && 'map' in mat) mat.map = colorMap;
-                      if (normalMap && 'normalMap' in mat) mat.normalMap = normalMap;
-                      mat.needsUpdate = true;
-                      return mat;
+                      // Convert Phong/Basic material to Standard material to support PBR textures
+                      mat = new THREE.MeshStandardMaterial();
+                      // Copy basic properties from the original material
+                      if (origMat.color) mat.color.copy(origMat.color);
+                      if (origMat.map) mat.map = origMat.map;
+                      if (origMat.opacity !== undefined) mat.opacity = origMat.opacity;
+                      if (origMat.transparent !== undefined) mat.transparent = origMat.transparent;
+                      if (origMat.side !== undefined) mat.side = origMat.side;
                   }
+                  
+                  if (colorMap) {
+                      mat.map = colorMap;
+                      mat.color.setRGB(1, 1, 1);
+                  }
+                  if (normalMap) mat.normalMap = normalMap;
+                  if (metallicMap) mat.metalnessMap = metallicMap;
+                  if (roughnessMap) mat.roughnessMap = roughnessMap;
+                  
+                  mat.needsUpdate = true;
+                  return mat;
               };
               if (Array.isArray(child.material)) {
                   child.material = child.material.map(applyMaps);
@@ -364,6 +375,83 @@ export class CharacterAnimator {
           object.rotation.set(0, 0, 0); 
       }
 
+      // Add procedural nose and blinking eyes
+      let headBone: THREE.Object3D | null = null;
+      object.traverse((child: any) => {
+          if (!headBone && child.isBone && child.name.toLowerCase().includes('head') && !child.name.toLowerCase().includes('top')) {
+              headBone = child;
+          }
+      });
+      
+      const faceGroup = new THREE.Group();
+      faceGroup.name = 'proceduralFace';
+      
+      // We scale faceGroup inversely so that the child meshes (eyes/nose)
+      // will be in absolute world meters (e.g. 0.03m radius).
+      faceGroup.scale.setScalar(1 / scaleAmount);
+      
+      // Eyes - Chibi style
+      const scleraGeo = new THREE.SphereGeometry(0.08, 16, 16);
+      scleraGeo.scale(1, 1, 0.4); // Flatten
+      const scleraMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      
+      const pupilGeo = new THREE.SphereGeometry(0.04, 16, 16);
+      pupilGeo.scale(1, 1, 0.3); // Flatten
+      const pupilMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+
+      const leftEyeGroup = new THREE.Group();
+      leftEyeGroup.position.set(-0.09, 0.10, 0.15);
+      const leftSclera = new THREE.Mesh(scleraGeo, scleraMat);
+      const leftPupil = new THREE.Mesh(pupilGeo, pupilMat);
+      leftPupil.position.set(0, 0, 0.035);
+      leftEyeGroup.add(leftSclera, leftPupil);
+
+      const rightEyeGroup = new THREE.Group();
+      rightEyeGroup.position.set(0.09, 0.10, 0.15);
+      const rightSclera = new THREE.Mesh(scleraGeo, scleraMat);
+      const rightPupil = new THREE.Mesh(pupilGeo, pupilMat);
+      rightPupil.position.set(0, 0, 0.035);
+      rightEyeGroup.add(rightSclera, rightPupil);
+      
+      // Nose - Organic
+      const noseGeo = new THREE.SphereGeometry(0.05, 16, 16);
+      noseGeo.scale(1, 0.7, 1.2); // Organic oblong shape
+      const noseMat = new THREE.MeshStandardMaterial({ color: 0xffb6c1, roughness: 0.6 });
+      const nose = new THREE.Mesh(noseGeo, noseMat);
+      nose.position.set(0, 0.02, 0.19);
+
+      faceGroup.add(leftEyeGroup);
+      faceGroup.add(rightEyeGroup);
+      faceGroup.add(nose);
+      
+      if (headBone) {
+          // In world space equivalent: 15cm up, 10cm forward from head bone origin
+          faceGroup.position.set(0, 0.15 / scaleAmount, 0.10 / scaleAmount); 
+          faceGroup.rotation.x = -0.10; // Tilt back slightly
+          headBone.add(faceGroup);
+      } else {
+          // Fallback if no head bone
+          faceGroup.position.set(0, 1.6 / scaleAmount, 0.14 / scaleAmount);
+          faceGroup.rotation.x = -0.10; // Tilt back slightly
+          object.add(faceGroup);
+      }
+      
+      // Blinking logic
+      if (this.blinkInterval) {
+          clearInterval(this.blinkInterval);
+      }
+      this.blinkInterval = setInterval(() => {
+          // Close eyes
+          leftEyeGroup.scale.y = 0.1;
+          rightEyeGroup.scale.y = 0.1;
+          setTimeout(() => {
+              // Open eyes
+              leftEyeGroup.scale.y = 1;
+              rightEyeGroup.scale.y = 1;
+          }, 150); // Blink duration
+      }, 3000 + Math.random() * 2000) as any;
+
+
       // Safeguard against concurrent loads: clear any children that might have loaded in parallel
       const concurrentToRemove: THREE.Object3D[] = [];
       this.group.children.forEach(c => {
@@ -373,14 +461,18 @@ export class CharacterAnimator {
       });
       concurrentToRemove.forEach(c => {
           this.group.remove(c);
-          CharacterAnimator.disposeHierarchy(c);
+          c.traverse((child: any) => {
+              if (child.name === 'proceduralFace') {
+                  CharacterAnimator.disposeHierarchy(child);
+              }
+          });
       });
 
-      this.group.add(object);
+      this.group.add(this.innerMesh);
       this.mixer = new THREE.AnimationMixer(object);
       
       let animationsToLoad = [
-        { name: 'idle', url: '/assets/character/animations/idle.fbx' },
+        { name: 'idle', url: '/assets/character/peter/peteridle.fbx' },
         { name: 'walk', url: '/assets/character/animations/walk.fbx' },
         { name: 'jog', url: '/assets/character/animations/jog.fbx' },
         { name: 'run', url: '/assets/character/animations/run.fbx' },
@@ -388,31 +480,12 @@ export class CharacterAnimator {
         { name: 'pushing', url: '/assets/character/animations/pushing.fbx' },
         { name: 'swim', url: '/assets/character/animations/swim.fbx' },
         { name: 'tread', url: '/assets/character/animations/tread.fbx' },
-        { name: 'neutral_idle', url: '/assets/character/animations/neutral_idle.fbx' },
-        { name: 'climbing', url: '/assets/character/animations/climbing.fbx' },
+        { name: 'neutral_idle', url: '/assets/character/peter/peteridle.fbx' },
         { name: 'crouch_idle', url: '/assets/character/animations/crouch_idle.fbx' },
-        { name: 'crouched_walking', url: '/assets/character/animations/crouched_walking.fbx' },
+        { name: 'crouched_walking', url: '/assets/character/peter/peteridle.fbx' },
         { name: 'prone_forward', url: '/assets/character/animations/prone_forward.fbx' },
-        { name: 'breathing_idle', url: '/assets/character/animations/breathing_idle.fbx' },
+        { name: 'breathing_idle', url: '/assets/character/peter/peteridle.fbx' },
       ];
-
-      if (requestedUrl.includes('humanoid')) {
-        const customIdleUrl = '/assets/character/humanoid/Unarmed_Idle.fbx';
-        animationsToLoad = animationsToLoad.map(a => {
-          if (a.name === 'idle' || a.name === 'neutral_idle' || a.name === 'breathing_idle') {
-            return { name: a.name, url: customIdleUrl };
-          }
-          return a;
-        });
-      } else if (requestedUrl.includes('explorer_clone')) {
-        const customIdleUrl = '/assets/character/explorer_clone/Breathing_Idle.fbx';
-        animationsToLoad = animationsToLoad.map(a => {
-          if (a.name === 'idle' || a.name === 'neutral_idle' || a.name === 'breathing_idle') {
-            return { name: a.name, url: customIdleUrl };
-          }
-          return a;
-        });
-      }
       
       await Promise.all(animationsToLoad.map(async (anim) => {
         try {
@@ -422,12 +495,22 @@ export class CharacterAnimator {
             const tracks = animObject.animations[0].tracks.map(t => t.clone());
             const clip = new THREE.AnimationClip(anim.name, animObject.animations[0].duration, tracks);
             
-            const isCustomAnim = anim.url.includes('humanoid') || anim.url.includes('explorer_clone');
+            const isCustomAnim = false;
             clip.tracks.forEach((track) => {
                if (!isCustomAnim) {
-                  track.name = track.name.replace(/^(mixamorig[a-zA-Z0-9_]*:|mixamorig\d*)/, this.basePrefix);
-                  if (this.basePrefix === '' && track.name.includes(':')) {
-                     track.name = track.name.replace(/^.*:/, ''); 
+                  if (foundBone) {
+                      track.name = track.name.replace(/^(mixamorig[a-zA-Z0-9_]*:|mixamorig\d*)/, this.basePrefix);
+                      if (this.basePrefix === '' && track.name.includes(':')) {
+                         track.name = track.name.replace(/^.*:/, ''); 
+                      }
+                  } else {
+                      // Fallback for static models like bob.fbx that have no bones:
+                      // apply Hips translation/rotation directly to the root mesh!
+                      if (track.name.includes('Hips')) {
+                          track.name = rootMeshName + '.' + track.name.split('.')[1];
+                      } else {
+                          track.name = 'ignored.' + track.name.split('.')[1];
+                      }
                   }
                   if (track.name.includes('Hips.position') && track.values.length >= 3) {
                      const diffX = meshHipsRestingPosition.x - track.values[0];
@@ -442,6 +525,10 @@ export class CharacterAnimator {
                }
             
             });
+            
+            // Remove ignored tracks to prevent console warnings
+            clip.tracks = clip.tracks.filter(t => !t.name.startsWith('ignored.'));
+            
              const action = this.mixer!.clipAction(clip);
             if (anim.name === 'jump') {
               action.setLoop(THREE.LoopOnce, 1);

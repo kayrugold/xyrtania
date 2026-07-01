@@ -16,14 +16,23 @@ async function startServer() {
 
   // Enforce correct Content-Type and Content-Encoding for FBX files to prevent proxy-level compression/corruption
   app.use((req, res, next) => {
-    if (req.url && req.url.endsWith('.fbx')) {
+    const cleanPath = req.path || "";
+    if (cleanPath.endsWith('.fbx')) {
       res.setHeader('Content-Type', 'application/octet-stream');
       res.setHeader('Content-Encoding', 'identity');
-      res.setHeader('Cache-Control', 'public, max-age=31536000');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     }
     next();
   });
 
+  
+  const globalClientErrors = [];
+  app.get("/api/get_errors", (req, res) => res.json(globalClientErrors));
+  app.post("/api/log_error", express.json(), (req, res) => {
+    console.log("CLIENT ERROR:", req.body);
+    globalClientErrors.push(req.body);
+    res.json({ ok: true });
+  });
   app.use("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });

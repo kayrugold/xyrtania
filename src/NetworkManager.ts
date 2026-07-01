@@ -54,9 +54,9 @@ export class NetworkManager {
     let savedMode = localStorage.getItem('xyrtania_connection_mode') as 'colyseus_render' | 'colyseus_local' | 'p2p';
     
     // Support upgrading old 'colyseus' string if it is stored in localStorage
-    if (savedMode as any === 'colyseus') {
-      savedMode = 'colyseus_render';
-      localStorage.setItem('xyrtania_connection_mode', 'colyseus_render');
+    if (savedMode as any === 'colyseus' || savedMode as any === 'colyseus_render' || savedMode as any === 'p2p') {
+      savedMode = 'colyseus_local';
+      localStorage.setItem('xyrtania_connection_mode', 'colyseus_local');
     }
     
     if (savedMode === 'p2p') {
@@ -72,9 +72,10 @@ export class NetworkManager {
       this.client = new Client(this.serverEndpoint);
       this.connectToServer();
     } else {
-      // Default to Production Render Colyseus Server!
-      this.connectionMode = 'colyseus_render';
-      this.serverEndpoint = 'wss://xyrtania-server.onrender.com';
+      // Default to Local Colyseus Server!
+      this.connectionMode = 'colyseus_local';
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      this.serverEndpoint = `${protocol}//${window.location.host}`;
       this.client = new Client(this.serverEndpoint);
       this.connectToServer();
     }
@@ -217,7 +218,7 @@ export class NetworkManager {
     
     try {
       const initialDisplayName = localStorage.getItem('xyrtania_display_name') || 'Anonymous';
-      const initialAvatarId = '/assets/character/base_male.fbx'; // default
+      const initialAvatarId = '/assets/character/peter/peteridle.fbx'; // default
 
       // Clean up any stale old-format session variables
       localStorage.removeItem('xyrtania_last_room_id');
@@ -293,7 +294,7 @@ export class NetworkManager {
           const peer = this.peers.get(sessionId)!;
           peer.state.position.set(player.x, player.y, player.z);
           peer.state.direction = player.rotation;
-          peer.state.modelUrl = player.avatarId || '/assets/character/base_male.fbx';
+          peer.state.modelUrl = player.avatarId || '/assets/character/peter/peteridle.fbx';
           peer.state.displayName = player.displayName;
           peer.state.currentAnimation = player.currentAnimation || 'neutral_idle';
           peer.state.animationState = player.animationState || 'neutral_idle';
@@ -311,7 +312,7 @@ export class NetworkManager {
               peerToUpdate.state.position.y = player.y;
               peerToUpdate.state.position.z = player.z;
               peerToUpdate.state.direction = player.rotation;
-              peerToUpdate.state.modelUrl = player.avatarId || '/assets/character/base_male.fbx';
+              peerToUpdate.state.modelUrl = player.avatarId || '/assets/character/peter/peteridle.fbx';
               
               const oldDisplayName = peerToUpdate.state.displayName;
               peerToUpdate.state.displayName = player.displayName;

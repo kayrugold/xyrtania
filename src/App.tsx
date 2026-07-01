@@ -54,11 +54,11 @@ export default function App() {
 
   const [connectionMode, setConnectionMode] = useState<'colyseus_render' | 'colyseus_local' | 'p2p'>(() => {
     let saved = localStorage.getItem('xyrtania_connection_mode') as 'colyseus_render' | 'colyseus_local' | 'p2p' | 'colyseus';
-    if (saved === 'colyseus') {
-      saved = 'colyseus_render';
-      localStorage.setItem('xyrtania_connection_mode', 'colyseus_render');
+    if (saved === 'colyseus' || saved === 'colyseus_render' || saved === 'p2p') {
+      saved = 'colyseus_local';
+      localStorage.setItem('xyrtania_connection_mode', 'colyseus_local');
     }
-    return saved || 'colyseus_render';
+    return saved || 'colyseus_local';
   });
 
   const handleConnectionModeChange = (mode: 'colyseus_render' | 'colyseus_local' | 'p2p') => {
@@ -249,7 +249,7 @@ export default function App() {
     };
     localAnimatorRef.current = animator;
     playerRootGroup.add(animator.group);
-    animator.loadModelAndAnimations().catch((err) => console.error(err));
+    animator.loadModelAndAnimations('/assets/character/peter/peteridle.fbx').catch((err) => console.error(err));
 
     // --- 5. NETWORK MANAGER INITIALIZATION ---
     const networkManager = new NetworkManager('xyrtania-world-1', 'main-room');
@@ -717,11 +717,7 @@ export default function App() {
     window.addEventListener('keyup', keyReleaseHandler);
 
     const characters = [
-      '/assets/character/base_male.fbx', 
-      '/assets/character/base_male_0/base_male_0.fbx',
-      '/assets/character/bob.fbx',
-      '/assets/character/humanoid/humanoid.fbx',
-      '/assets/character/explorer_clone/explorer_clone.fbx'
+      '/assets/character/peter/peteridle.fbx'
     ];
     
     // Kickoff background async preloading of all models to avoid lag spikes
