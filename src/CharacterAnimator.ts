@@ -81,7 +81,7 @@ export class CharacterAnimator {
         '/assets/character/animations/tread.fbx',
         '/assets/character/Xyrtania_Male_NoMorphs.glb',
         '/assets/character/animations/crouch_idle.fbx',
-        '/assets/character/Xyrtania_Male_NoMorphs.glb',
+        '/assets/character/animations/crouchedwalking.fbx',
         '/assets/character/animations/prone_forward.fbx',
         '/assets/character/Xyrtania_Male_NoMorphs.glb',
       ];
@@ -931,7 +931,7 @@ export class CharacterAnimator {
         { name: 'tread', url: '/assets/character/animations/tread.fbx' },
         { name: 'neutral_idle', url: '/assets/character/Xyrtania_Male_NoMorphs.glb' },
         { name: 'crouch_idle', url: '/assets/character/animations/crouch_idle.fbx' },
-        { name: 'crouched_walking', url: '/assets/character/Xyrtania_Male_NoMorphs.glb' },
+        { name: 'crouched_walking', url: '/assets/character/animations/crouchedwalking.fbx' },
         { name: 'prone_forward', url: '/assets/character/animations/prone_forward.fbx' },
         { name: 'breathing_idle', url: '/assets/character/Xyrtania_Male_NoMorphs.glb' },
       ];
@@ -940,9 +940,13 @@ export class CharacterAnimator {
         try {
           const animObject = await CharacterAnimator.getAnimation(anim.url);
           if (animObject.animations && animObject.animations.length > 0) {
+            let targetAnim = animObject.animations[0];
+            for (const a of animObject.animations) {
+                if (a.duration > targetAnim.duration) targetAnim = a;
+            }
             // Deep clone tracks to isolate track mutations entirely from shared cache
-            const tracks = animObject.animations[0].tracks.map(t => t.clone());
-            let clip = new THREE.AnimationClip(anim.name, animObject.animations[0].duration, tracks);
+            const tracks = targetAnim.tracks.map(t => t.clone());
+            let clip = new THREE.AnimationClip(anim.name, targetAnim.duration, tracks);
             
             const isTargetGLB = this.currentModelUrl.endsWith('.glb') || this.currentModelUrl.endsWith('.gltf') || this.currentModelUrl.includes('.glb') || this.currentModelUrl.includes('.gltf') || this.currentModelUrl.startsWith('blob:');
             const isSourceFBX = anim.url.endsWith('.fbx');
@@ -988,14 +992,22 @@ export class CharacterAnimator {
                         });
                     });
 
+                    const sourceBoneNames = sourceSkinnedMesh.skeleton.bones.map(b => b.name);
+                    const getBoneName = (targetBone: THREE.Bone) => {
+                        const targetBase = targetBone.name.replace(/^(mixamorig[a-zA-Z0-9_]*:|mixamorig\d*)/, '').replace(/^.*:/, '');
+                        const sourceBone = sourceBoneNames.find(n => n.replace(/^(mixamorig[a-zA-Z0-9_]*:|mixamorig\d*)/, '').replace(/^.*:/, '') === targetBase);
+                        return sourceBone || targetBone.name;
+                    };
+                    const hipName = sourceBoneNames.find(n => n.replace(/^(mixamorig[a-zA-Z0-9_]*:|mixamorig\d*)/, '').replace(/^.*:/, '') === 'Hips') || 'Hips';
+
                     const retargetedClip = SkeletonUtils.retargetClip(targetSkinnedMesh, sourceSkinnedMesh, clip, {
                         preserveMatrix: false,
                         preservePosition: false,
                         preserveHipPosition: false,
                         useFirstFramePosition: false,
-                        hip: this.basePrefix + 'Hips',
+                        hip: hipName,
                         scale: 0.01,
-                        getBoneName: (b: THREE.Bone) => b.name
+                        getBoneName: getBoneName
                     } as any);
                     
                     // Restore original bone transforms so the character doesn't become a giant

@@ -757,7 +757,7 @@ export default function App() {
 
       const k = e.key.toLowerCase();
       
-      if (e.key.toLowerCase() === 'h' || e.key.toLowerCase() === 'c') {
+      if (k === 'h') {
           switchHeadRef.current();
       }
 
@@ -765,7 +765,7 @@ export default function App() {
       keys[k] = true;
 
       // Crouch
-      if (k === 'control') {
+      if (k === 'control' || k === 'c') {
         state.isCrouching = !state.isCrouching;
         if (state.isCrouching) state.isProne = false;
       }
