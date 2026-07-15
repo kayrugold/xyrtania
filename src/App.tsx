@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'; // Trigger file watc
 import * as THREE from 'three';
 import { Maximize, Palette } from 'lucide-react';
 import { WorldGrid } from './WorldGrid';
-import { PlayerState, JumpPhase } from './types';
+import { PlayerState, JumpPhase, resolveAssetUrl } from './types';
 import { CharacterAnimator } from './CharacterAnimator';
 import { NetworkManager } from './NetworkManager';
 import { AccountUI } from './components/AccountUI';
@@ -15,18 +15,22 @@ export default function App() {
   const lookKnobRef = useRef<HTMLDivElement | null>(null);
 
   // High-fidelity active React HUD states synced with the WebGL gameplay loop
-  const [health, setHealth] = useState(100);
-  const [stamina, setStamina] = useState(100);
+  
+  
   const [px, setPx] = useState(0);
   const [pz, setPz] = useState(0);
   const [heading, setHeading] = useState('N');
   const [headingDegrees, setHeadingDegrees] = useState(0);
   const [fps, setFps] = useState(60);
-  const [jumpPhase, setJumpPhase] = useState<JumpPhase>(JumpPhase.IDLE);
+  
   const [chunkCx, setChunkCx] = useState(0);
   const [chunkCz, setChunkCz] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showHud, setShowHud] = useState(true);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const showDiagnosticsRef = useRef(false);
+  useEffect(() => { showDiagnosticsRef.current = showDiagnostics; }, [showDiagnostics]);
+  const [hideCharacter, setHideCharacter] = useState(false);
   const [isFakeFullscreen, setIsFakeFullscreen] = useState(false);
   const [lastLoadError, setLastLoadError] = useState<string | null>(null);
   const [gamepadName, setGamepadName] = useState<string | null>(null);
@@ -41,7 +45,26 @@ export default function App() {
   const [showCustomizer, setShowCustomizer] = useState(false);
   const [customColor, setCustomColor] = useState<string>('#ffffff');
   const [customScale, setCustomScale] = useState<number>(1.0);
-  const [graphicsQuality, setGraphicsQuality] = useState<'high' | 'medium' | 'low'>('high');
+  const [customWidth, setCustomWidth] = useState<number>(1.0);
+  const [customHeight, setCustomHeight] = useState<number>(1.0);
+  const [customDepth, setCustomDepth] = useState<number>(1.0);
+  const [customMetalness, setCustomMetalness] = useState<number>(0.0);
+  const [customRoughness, setCustomRoughness] = useState<number>(0.8);
+  const [customHeadScale, setCustomHeadScale] = useState<number>(1.0);
+  const [customLegLength, setCustomLegLength] = useState<number>(1.0);
+  const [customArmLength, setCustomArmLength] = useState<number>(1.0);
+  const [customTorsoThickness, setCustomTorsoThickness] = useState<number>(1.0);
+  const [glowIntensity, setGlowIntensity] = useState<number>(0.0);
+  const [glowColor, setGlowColor] = useState<string>('#00ffff');
+  const [wireframe, setWireframe] = useState<boolean>(false);
+  const [hologram, setHologram] = useState<boolean>(false);
+  const [torsoVisible, setTorsoVisible] = useState<boolean>(true);
+  const [morphTargets, setMorphTargets] = useState<Record<string, number>>({});
+  const [headStyle, setHeadStyle] = useState<number>(0);
+  const [uploadedHeadName, setUploadedHeadName] = useState<string | null>(null);
+  const [uploadedCharName, setUploadedCharName] = useState<string | null>(null);
+  const [uploadedTreeName, setUploadedTreeName] = useState<string | null>(null);
+  const [graphicsQuality, setGraphicsQuality] = useState<'high' | 'medium' | 'low' | 'potato'>('potato');
 
   const graphicsQualityRef = useRef(graphicsQuality);
   useEffect(() => {
@@ -50,7 +73,11 @@ export default function App() {
   }, [graphicsQuality]);
 
   const localAnimatorRef = useRef<CharacterAnimator | null>(null);
+  const hideCharacterRef = useRef(false);
+  useEffect(() => { hideCharacterRef.current = hideCharacter; }, [hideCharacter]);
   const networkManagerRef = useRef<NetworkManager | null>(null);
+  const worldGridRef = useRef<WorldGrid | null>(null);
+  const [githubAssetUrl, setGithubAssetUrl] = useState<string>(() => localStorage.getItem('xyrtania_github_raw_url') || '');
 
   const [connectionMode, setConnectionMode] = useState<'colyseus_render' | 'colyseus_local' | 'p2p'>(() => {
     let saved = localStorage.getItem('xyrtania_connection_mode') as 'colyseus_render' | 'colyseus_local' | 'p2p' | 'colyseus';
@@ -70,13 +97,33 @@ export default function App() {
 
   // References to invoke in-game actions from absolute HTML DOM target elements
   const triggerJumpRef = useRef<() => void>(() => {});
-  const switchCharacterRef = useRef<() => void>(() => {});
+  const switchHeadRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     if (localAnimatorRef.current) {
-      localAnimatorRef.current.setCustomization(customColor, customScale);
+      localAnimatorRef.current.setCustomization(customColor, customScale, torsoVisible);
+      localAnimatorRef.current.applyCustomization({
+        ...morphTargets,
+        width: customWidth,
+        height: customHeight,
+        depth: customDepth,
+        metalness: customMetalness,
+        roughness: customRoughness,
+        headScale: customHeadScale,
+        legLength: customLegLength,
+        armLength: customArmLength,
+        torsoThickness: customTorsoThickness,
+        glowIntensity: glowIntensity,
+        glowColor: glowColor,
+        wireframe: wireframe ? 1 : 0,
+        hologram: hologram ? 1 : 0,
+      });
     }
-  }, [customColor, customScale]);
+  }, [
+    customColor, customScale, torsoVisible, morphTargets, customWidth, customHeight, customDepth, 
+    customMetalness, customRoughness, customHeadScale, customLegLength, customArmLength, 
+    customTorsoThickness, glowIntensity, glowColor, wireframe, hologram
+  ]);
 
   // Fullscreen support state detection
   useEffect(() => {
@@ -149,8 +196,8 @@ export default function App() {
     });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.enabled = false;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     // CRITICAL: Prevent auto-clearing to enable dual-scene overlay pipeline
     renderer.autoClear = false;
 
@@ -182,9 +229,9 @@ export default function App() {
 
     const sunLight = new THREE.DirectionalLight(0x22d3ee, 1.4); // Cool cyan futuristic moonlight spotlight beams!
     sunLight.position.set(35, 60, 25);
-    sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 1024;
-    sunLight.shadow.mapSize.height = 1024;
+    sunLight.castShadow = false;
+    sunLight.shadow.mapSize.width = 512;
+    sunLight.shadow.mapSize.height = 512;
     sunLight.shadow.camera.near = 0.5;
     sunLight.shadow.camera.far = 150;
     const sCamDist = 60;
@@ -222,7 +269,14 @@ export default function App() {
     }
 
     // --- 4. ENGINE INITIALIZATION ---
+    
     const worldGrid = new WorldGrid(scene);
+    worldGridRef.current = worldGrid;
+    let isWorldGridLoaded = false;
+    worldGrid.loadAssets().then(() => {
+        isWorldGridLoaded = true;
+    });
+    // We will await tree prototype loading before generation in a detached async block
 
     // Player State Tracker
     const state: PlayerState = {
@@ -242,14 +296,24 @@ export default function App() {
     playerRootGroup.position.set(0, 0, 0);
     scene.add(playerRootGroup);
 
-    // Explorer Character Mesh (FBX + Animations)
+    // Explorer Character Mesh
     const animator = new CharacterAnimator();
     CharacterAnimator.onError = (err) => {
-      setLastLoadError(err || null);
+      const errMsg = err ? String(err) : '';
+      if (errMsg.includes('Offset is outside the bounds') || errMsg.includes('Failed to load character') || errMsg.includes('Unexpected token') || errMsg.includes('DataView') || errMsg.includes('DRACO')) {
+        // Silently ignore corrupted GLB files, placeholder is already rendered
+      } else {
+        setLastLoadError(errMsg || null);
+      }
     };
     localAnimatorRef.current = animator;
     playerRootGroup.add(animator.group);
-    animator.loadModelAndAnimations('/assets/character/peter/peteridle.fbx').catch((err) => console.error(err));
+    animator.loadModelAndAnimations('/assets/character/Xyrtania_Male_NoMorphs.glb').catch((err) => {
+      const errMsg = err ? String(err) : '';
+      if (!errMsg.includes('Offset is outside the bounds') && !errMsg.includes('Failed to load character') && !errMsg.includes('DataView')) {
+        console.error(err);
+      }
+    });
 
     // --- 5. NETWORK MANAGER INITIALIZATION ---
     const networkManager = new NetworkManager('xyrtania-world-1', 'main-room');
@@ -620,17 +684,21 @@ export default function App() {
       
       if (quality === 'high') {
         // High quality: 1.5 max pixel ratio under normal, 1.25 in fullscreen to optimize fill rate
-        maxPixelRatio = document.fullscreenElement ? 1.25 : 1.5;
-        sunLight.castShadow = true;
-        renderer.shadowMap.enabled = true;
+        maxPixelRatio = document.fullscreenElement ? 1.0 : 1.0;
+        sunLight.castShadow = false;
+        renderer.shadowMap.enabled = false;
       } else if (quality === 'medium') {
         // Medium quality: 1.0 max pixel ratio (sharp, but much fewer pixels than 1.5/2.0), shadows enabled
-        maxPixelRatio = 1.0;
-        sunLight.castShadow = true;
-        renderer.shadowMap.enabled = true;
-      } else { // 'low'
-        // Low quality: 0.85 max pixel ratio (sub-sampled), shadows disabled completely for peak performance
-        maxPixelRatio = 0.85;
+        maxPixelRatio = 0.75;
+        sunLight.castShadow = false;
+        renderer.shadowMap.enabled = false;
+      } else if (quality === 'low') { // 'low'
+        // Low quality: 0.5 max pixel ratio (sub-sampled), shadows disabled completely for peak performance
+        maxPixelRatio = 0.5;
+        sunLight.castShadow = false;
+        renderer.shadowMap.enabled = false;
+      } else { // 'potato'
+        maxPixelRatio = 0.25;
         sunLight.castShadow = false;
         renderer.shadowMap.enabled = false;
       }
@@ -669,6 +737,9 @@ export default function App() {
 
     const keys: { [key: string]: boolean } = {};
     const keyPressHandler = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'p') {
+        setHideCharacter(prev => !prev);
+      }
       isTouchMode = false; // keyboard input means we probably aren't relying purely on touch HUD
       
       // Prevent scrolling when pressing Spacebar
@@ -685,13 +756,13 @@ export default function App() {
       }
 
       const k = e.key.toLowerCase();
+      
+      if (e.key.toLowerCase() === 'h' || e.key.toLowerCase() === 'c') {
+          switchHeadRef.current();
+      }
+
       if (keys[k]) return; // Stop repeating keydown auto-repeat
       keys[k] = true;
-
-      // Character Switch
-      if (k === 'c') {
-        switchCharacter();
-      }
 
       // Crouch
       if (k === 'control') {
@@ -717,22 +788,23 @@ export default function App() {
     window.addEventListener('keyup', keyReleaseHandler);
 
     const characters = [
-      '/assets/character/peter/peteridle.fbx'
+      '/assets/character/Xyrtania_Male_NoMorphs.glb'
     ];
     
     // Kickoff background async preloading of all models to avoid lag spikes
     CharacterAnimator.preloadCharacters(characters);
     
-    let currentCharacterIndex = 0;
+    let currentHeadStyle = 0;
     let lastSwitchTime = 0;
 
-    function switchCharacter() {
+    function switchHead() {
         const now = performance.now();
-        if (now - lastSwitchTime < 1500) return;
+        if (now - lastSwitchTime < 500) return;
         lastSwitchTime = now;
         
-        currentCharacterIndex = (currentCharacterIndex + 1) % characters.length;
-        animator.loadModelAndAnimations(characters[currentCharacterIndex]).catch(e => console.error('Error switching character:', e));
+        currentHeadStyle = (currentHeadStyle + 1) % 4;
+        setHeadStyle(currentHeadStyle);
+        animator.setHeadStyle(currentHeadStyle);
     }
 
     function initiateJump() {
@@ -750,7 +822,7 @@ export default function App() {
 
     // Connect refs to make these actions callable from the outer React DOM HUD
     triggerJumpRef.current = initiateJump;
-    switchCharacterRef.current = switchCharacter;
+    switchHeadRef.current = switchHead;
 
     // Split-screen touch/mouse active tracking states
     let moveActive = false;
@@ -771,8 +843,8 @@ export default function App() {
 
     // Camera orbit parameters (starts behind player looking forward)
     let cameraYaw = 0;
-    let cameraPitch = 0.55;
-    const baseCameraDistance = 5.5;
+    let cameraPitch = 0.2;
+    const baseCameraDistance = 4.2;
 
     const handlePointerDown = (clientX: number, clientY: number, touchId: number | null) => {
       // 1. Raycast into flat Hud Scene to verify circular buttons hits
@@ -937,12 +1009,12 @@ export default function App() {
     const onMouseMove = (e: MouseEvent) => {
       isTouchMode = false;
       if (document.pointerLockElement === el) {
-        cameraYaw -= e.movementX * 0.012;
-        cameraPitch = Math.max(-1.4, Math.min(1.4, cameraPitch + e.movementY * 0.005));
+        cameraYaw -= e.movementX * 0.008;
+        cameraPitch = Math.max(-1.5, Math.min(1.4, cameraPitch + e.movementY * 0.006));
       } else if (e.buttons > 0) {
         // Fallback for iframe where pointer lock might be blocked
-        cameraYaw -= e.movementX * 0.012;
-        cameraPitch = Math.max(-1.4, Math.min(1.4, cameraPitch + e.movementY * 0.005));
+        cameraYaw -= e.movementX * 0.008;
+        cameraPitch = Math.max(-1.5, Math.min(1.4, cameraPitch + e.movementY * 0.006));
       }
     };
     const onWindowMouseUp = () => {
@@ -1004,8 +1076,17 @@ export default function App() {
     let gamepadCrouchPressTime = 0;
     let gamepadCrouchHoldTriggered = false;
 
+    
     const gameLoop = () => {
+      const t0 = performance.now();
       frameId = requestAnimationFrame(gameLoop);
+
+      if (!isWorldGridLoaded) {
+        // Still render the loading screen/empty scene
+        renderer.clear();
+        renderer.render(scene, camera);
+        return;
+      }
 
       const currentTime = performance.now();
       
@@ -1080,7 +1161,7 @@ export default function App() {
             const gpCy = Math.abs(gp.axes[3]) > 0.15 ? gp.axes[3] : 0;
             
             if (gpCx !== 0) cameraYaw -= gpCx * 3.0 * dt;
-            if (gpCy !== 0) cameraPitch = Math.max(-1.4, Math.min(1.4, cameraPitch + gpCy * 2.0 * dt));
+            if (gpCy !== 0) cameraPitch = Math.max(-1.5, Math.min(1.4, cameraPitch + gpCy * 2.0 * dt));
         }
 
         // Button 1 (index 1) for jump
@@ -1170,13 +1251,8 @@ export default function App() {
           const screenAngle = Math.atan2(screenDx, screenDz);
           
           // Project relative to camera forward vector
-          const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-          if (!(state as any).isSwimming) camForward.y = 0;
-          camForward.normalize();
-
-          const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-          if (!(state as any).isSwimming) camRight.y = 0;
-          camRight.normalize();
+          const camForward = new THREE.Vector3(-Math.sin(cameraYaw), 0, -Math.cos(cameraYaw)).normalize();
+        const camRight = new THREE.Vector3(Math.cos(cameraYaw), 0, -Math.sin(cameraYaw)).normalize();
 
           // Mix vectors scaled by cam orientation
           const touchDir = camForward.multiplyScalar(-Math.cos(screenAngle)).add(camRight.multiplyScalar(Math.sin(screenAngle)));
@@ -1191,13 +1267,8 @@ export default function App() {
         const keyboardMag = moveVec.length();
         moveVec.normalize();
         
-        const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-        if (!(state as any).isSwimming) camForward.y = 0;
-        camForward.normalize();
-
-        const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-        if (!(state as any).isSwimming) camRight.y = 0;
-        camRight.normalize();
+        const camForward = new THREE.Vector3(-Math.sin(cameraYaw), 0, -Math.cos(cameraYaw)).normalize();
+        const camRight = new THREE.Vector3(Math.cos(cameraYaw), 0, -Math.sin(cameraYaw)).normalize();
 
         // moveVec.z is -1 for forward, moveVec.x is -1 for left
         const alignedMoveVec = camForward.multiplyScalar(-moveVec.z).add(camRight.multiplyScalar(moveVec.x));
@@ -1392,7 +1463,7 @@ export default function App() {
             if (state.speed > 0.1) {
               const movingDot = moveVec.dot(pushDir);
               
-              if (movingDot < -0.6) {
+              if (movingDot < -1.5) {
                 if (state.isGrounded) {
                   state.jumpPhase = JumpPhase.PUSHING;
                   playerDirectionAngle = Math.atan2(-pushDir.x, -pushDir.z);
@@ -1476,7 +1547,7 @@ export default function App() {
         }
       } else if (state.isGrounded) {
          // If walking off an edge or swimming upwards from the floor:
-         if (nextY > floorH + 0.1) {
+         if (nextY > floorH + 0.8) {
              // We are falling or swimming up!
              state.isGrounded = false;
              if (!isSwimmingNow) {
@@ -1525,34 +1596,44 @@ export default function App() {
           }
       }
 
-      // Apply wetness effect to character materials
-      if (state.wetness && state.wetness > 0) {
-          animator.group.traverse((child: any) => {
-              if (child.isMesh && child.material) {
-                  const material = child.material as THREE.MeshStandardMaterial;
-                  if (!material.userData.originalColor) {
-                      material.userData.originalColor = material.color.clone();
-                      material.userData.originalRoughness = material.roughness;
-                  }
-                  const origColor = material.userData.originalColor;
-                  const origRough = material.userData.originalRoughness !== undefined ? material.userData.originalRoughness : 1.0;
-                  
-                  // Darken color and reduce roughness when wet
-                  const targetColor = origColor.clone().multiplyScalar(1 - state.wetness! * 0.4);
-                  material.color.lerp(targetColor, 0.1);
-                  material.roughness = THREE.MathUtils.lerp(material.roughness, origRough - (state.wetness! * 0.6), 0.1);
+      // Apply wetness effect to character materials ONLY if changing
+      if (state.wetness !== undefined) {
+          const currentWetness = state.wetness;
+          const lastWetness = animator.group.userData.lastRenderedWetness ?? -1;
+          
+          // Only traverse and update materials if wetness has changed significantly (by 1% or if drying finished)
+          if (Math.abs(currentWetness - lastWetness) > 0.01 || (currentWetness === 0 && lastWetness !== 0)) {
+              animator.group.userData.lastRenderedWetness = currentWetness;
+              
+              if (currentWetness > 0) {
+                  animator.group.traverse((child: any) => {
+                      if (child.isMesh && child.material) {
+                          const material = child.material as THREE.MeshStandardMaterial;
+                          if (!material.userData.originalColor) {
+                              material.userData.originalColor = material.color.clone();
+                              material.userData.originalRoughness = material.roughness;
+                          }
+                          const origColor = material.userData.originalColor;
+                          const origRough = material.userData.originalRoughness !== undefined ? material.userData.originalRoughness : 1.0;
+                          
+                          // Darken color and reduce roughness when wet
+                          const targetColor = origColor.clone().multiplyScalar(1 - currentWetness * 0.4);
+                          material.color.lerp(targetColor, 0.5);
+                          material.roughness = THREE.MathUtils.lerp(material.roughness, origRough - (currentWetness * 0.6), 0.5);
+                      }
+                  });
+              } else if (currentWetness === 0) {
+                  animator.group.traverse((child: any) => {
+                      if (child.isMesh && child.material) {
+                          const material = child.material as THREE.MeshStandardMaterial;
+                          if (material.userData.originalColor) {
+                              material.color.lerp(material.userData.originalColor, 1.0);
+                              material.roughness = material.userData.originalRoughness;
+                          }
+                      }
+                  });
               }
-          });
-      } else if (state.wetness === 0) {
-          animator.group.traverse((child: any) => {
-              if (child.isMesh && child.material) {
-                  const material = child.material as THREE.MeshStandardMaterial;
-                  if (material.userData.originalColor) {
-                      material.color.lerp(material.userData.originalColor, 0.1);
-                      material.roughness = THREE.MathUtils.lerp(material.roughness, material.userData.originalRoughness, 0.1);
-                  }
-              }
-          });
+          }
       }
 
       lanternLight.position.set(state.position.x, state.position.y + 2, state.position.z);
@@ -1583,7 +1664,7 @@ export default function App() {
           
           // Snappy, incredibly responsive continuous orbital speeds
           cameraYaw -= ratioX * 5.0 * dt;
-          cameraPitch = Math.max(-1.4, Math.min(1.4, cameraPitch + ratioY * 1.8 * dt));
+          cameraPitch = Math.max(-1.5, Math.min(1.4, cameraPitch + ratioY * 1.8 * dt));
         }
       }
 
@@ -1595,6 +1676,7 @@ export default function App() {
       } else if (state.isCrouching) {
         focalPointHeight = animator.targetHeight * 0.42;
       }
+
       const focalPoint = state.position.clone().add(new THREE.Vector3(0, focalPointHeight, 0));
 
       // Calculate dynamic distance: Zoom in when looking up or down
@@ -1607,6 +1689,16 @@ export default function App() {
         const speedFactor = Math.min(1.0, state.speed / 18);
         currentCamDist -= speedFactor * 1.25;
       }
+      
+      // Calculate a right-offset for a 3/4 over-the-shoulder RPG camera (e.g. Gothic 3)
+      const rightDirection = new THREE.Vector3(
+         Math.cos(cameraYaw),
+         0,
+         -Math.sin(cameraYaw)
+      ).normalize();
+      
+      const shoulderOffset = rightDirection.clone().multiplyScalar(0.7 * heightScale);
+      const actualFocalPoint = focalPoint.clone().add(shoulderOffset);
 
       const dynamicOffset = new THREE.Vector3(
         currentCamDist * Math.sin(cameraYaw) * Math.cos(cameraPitch),
@@ -1614,10 +1706,13 @@ export default function App() {
         currentCamDist * Math.cos(cameraYaw) * Math.cos(cameraPitch)
       );
       
-      const targetCamPos = focalPoint.clone().add(dynamicOffset);
-      camera.position.lerp(targetCamPos, dt * 6.5);
+      const targetCamPos = actualFocalPoint.clone().add(dynamicOffset);
+      const camGroundH = worldGrid.getGroundHeight(targetCamPos.x, targetCamPos.z);
+      if (targetCamPos.y < camGroundH + 0.6) targetCamPos.y = camGroundH + 0.6;
+      // Use exact follow to eliminate camera-lag framerate jitter
+      camera.position.lerp(targetCamPos, 1.0);
       
-      camera.lookAt(focalPoint);
+      camera.lookAt(actualFocalPoint);
 
       // Lock our custom warm headlight directly to the camera center
       headLight.position.copy(camera.position);
@@ -1643,7 +1738,11 @@ export default function App() {
       }
 
       // --- ANIMATE VISUAL MASCOT JOINT COMPOSITIONS ---
-      animator.update(state, dt);
+      animator.group.visible = !hideCharacterRef.current;
+      if (!hideCharacterRef.current) {
+        animator.lookTarget = camera.position;
+        animator.update(state, dt);
+      }
 
       // --- RENDER REMOTE PLAYERS ---
       const nowMs = performance.now();
@@ -1663,13 +1762,23 @@ export default function App() {
            if (peer.state.animationState) {
               remAnim.currentActionName = peer.state.animationState;
            }
-           remAnim.loadModelAndAnimations(peer.state.modelUrl).catch(e => console.error(e));
+           remAnim.loadModelAndAnimations(peer.state.modelUrl).catch(err => {
+      const errMsg = err ? String(err) : '';
+      if (!errMsg.includes('Offset is outside the bounds') && !errMsg.includes('Failed to load character') && !errMsg.includes('DataView')) {
+        console.error(err);
+      }
+    });
            remoteAnimators.set(peerId, remAnim);
            peer.animator = remAnim;
         } else if (peer.state.modelUrl && remAnim.currentModelUrl !== peer.state.modelUrl) {
            // Swap model on the fly if they changed characters
            const currentAction = remAnim.currentActionName;
-           remAnim.loadModelAndAnimations(peer.state.modelUrl).catch(e => console.error(e));
+           remAnim.loadModelAndAnimations(peer.state.modelUrl).catch(err => {
+      const errMsg = err ? String(err) : '';
+      if (!errMsg.includes('Offset is outside the bounds') && !errMsg.includes('Failed to load character') && !errMsg.includes('DataView')) {
+        console.error(err);
+      }
+    });
            remAnim.currentActionName = currentAction;
            peer.animator = remAnim;
         } else {
@@ -1684,6 +1793,7 @@ export default function App() {
         remAnim.group.quaternion.slerp(targetQ, dt * 15);
         
         // Step animation
+        remAnim.lookTarget = camera.position;
         remAnim.update(peer.state, dt);
         
         // Update Player Nametag
@@ -1692,7 +1802,16 @@ export default function App() {
         }
 
         // Apply Customizations
-        remAnim.setCustomization(peer.state.customColor || null, peer.state.customScale || 1.0);
+        remAnim.setCustomization(
+          peer.state.customColor || null,
+          peer.state.customScale || 1.0,
+          peer.state.torsoVisible !== false
+        );
+        remAnim.applyCustomization(peer.state.morphTargets || {});
+
+        if (peer.state.headStyle !== undefined && remAnim.currentHeadStyle !== peer.state.headStyle) {
+          remAnim.setHeadStyle(peer.state.headStyle, peer.state.customHeadUrl || null);
+        }
       }
       
       // Cleanup disconnected or distant peers
@@ -1722,7 +1841,7 @@ export default function App() {
       const nowTime = performance.now();
       if (nowTime > lastFpsUpdate + 500) {
         const currentFps = Math.round((frames * 1000) / (nowTime - lastTime));
-        setFps(currentFps);
+        if (showDiagnosticsRef.current) setFps(currentFps);
         frames = 0;
         lastTime = nowTime;
         lastFpsUpdate = nowTime;
@@ -1730,11 +1849,10 @@ export default function App() {
 
       // Sync state updates at highly responsive yet resource-friendly 12Hz frame-rate (approx 80ms ticks)
       if (globalTime > lastStateUpdate + 0.08) {
-        setHealth(Math.round(state.health));
-        setStamina(Math.round(currentStamina));
-        setPx(state.position.x);
-        setPz(state.position.z);
-        setJumpPhase(state.jumpPhase);
+        if (showDiagnosticsRef.current) {
+          setPx(state.position.x);
+          setPz(state.position.z);
+        }
 
         state.direction = playerRootGroup.rotation.y;
 
@@ -1745,13 +1863,32 @@ export default function App() {
         state.animationState = animator.currentActionName;
         state.customColor = animator.customColor || undefined;
         state.customScale = animator.customScale;
+        state.torsoVisible = animator.torsoVisible;
+        state.headStyle = animator.currentHeadStyle;
+        state.customHeadUrl = animator.customHeadUrl || undefined;
+        state.morphTargets = {
+          ...morphTargets,
+          width: customWidth,
+          height: customHeight,
+          depth: customDepth,
+          metalness: customMetalness,
+          roughness: customRoughness,
+          headScale: customHeadScale,
+          legLength: customLegLength,
+          armLength: customArmLength,
+          torsoThickness: customTorsoThickness,
+          glowIntensity: glowIntensity,
+          glowColor: glowColor,
+          wireframe: wireframe ? 1 : 0,
+          hologram: hologram ? 1 : 0,
+        };
         animator.updateNametag(state.displayName);
         networkManager.broadcastState(state);
 
         // Derive cardinal heading direction
         let deg = Math.round((viewHeading * 180) / Math.PI);
         if (deg < 0) deg += 360;
-        setHeadingDegrees(deg);
+        setHeadingDegrees(prev => prev === deg ? prev : deg);
 
         const directions = [
           { name: 'N', min: 337.5, max: 22.5 },
@@ -1786,12 +1923,38 @@ export default function App() {
       // Clear viewport canvas colors
       renderer.clear();
 
-      // PASS 1: Render 3D World (Main scene)
+            // PASS 1: Render 3D World (Main scene)
       renderer.render(scene, camera);
+      let totalCalls = renderer.info.render.calls;
+      let totalTriangles = renderer.info.render.triangles;
 
       // PASS 2: Render our canvas-primitives HUD overlays on top of the 3D main viewport
       renderer.clearDepth();
       renderer.render(hudScene, hudCamera);
+      totalCalls += renderer.info.render.calls;
+      totalTriangles += renderer.info.render.triangles;
+
+      
+      
+      // Update diagnostics
+      if (typeof document !== 'undefined') {
+        if (!window.lastDiagUpdate || currentTime - window.lastDiagUpdate > 250) {
+          window.lastDiagUpdate = currentTime;
+          const diagDrawCalls = document.getElementById('diag-drawcalls');
+          const diagTriangles = document.getElementById('diag-triangles');
+          const diagCpu = document.getElementById('diag-cpu');
+          if (diagDrawCalls && diagTriangles) {
+            diagDrawCalls.innerText = totalCalls.toString();
+            diagTriangles.innerText = totalTriangles.toString();
+          }
+          if (diagCpu) {
+            diagCpu.innerText = (performance.now() - t0).toFixed(1);
+          }
+        }
+      }
+
+
+
     };
 
     // Kickstart recursive request frames
@@ -1823,16 +1986,20 @@ export default function App() {
     };
   }, []);
 
+  
+  useEffect(() => {
+    const handleDiagKey = (e: KeyboardEvent) => {
+      if (e.key === '`' || e.key === '~') {
+        setShowDiagnostics(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleDiagKey);
+    return () => window.removeEventListener('keydown', handleDiagKey);
+  }, []);
+
   return (
     <div className={isFakeFullscreen ? "fixed inset-0 z-[99999] w-full h-[100dvh] bg-[#050508] text-slate-300 font-sans overflow-hidden" : "w-screen h-[100dvh] bg-[#050508] text-slate-300 font-sans relative overflow-hidden"}>
       {/* Character Loading Error Banner */}
-      {lastLoadError && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-950/80 border border-red-500/40 backdrop-blur-md text-red-200 px-4 py-2.5 rounded-lg text-xs font-mono tracking-wide z-[100] shadow-[0_0_15px_rgba(239,68,68,0.25)] flex items-center gap-3">
-          <div className="w-2 h-2 rounded-full bg-red-500 animate-ping"></div>
-          <span>{lastLoadError}</span>
-          <button onClick={() => setLastLoadError(null)} className="text-red-400 hover:text-red-200 ml-2 font-sans text-sm font-bold cursor-pointer">✕</button>
-        </div>
-      )}
 
       {/* PWA Cryptographic Identity */}
       <AccountUI 
@@ -1919,16 +2086,16 @@ export default function App() {
           <Maximize className="w-5 h-5" />
         </button>
         <button
-          onClick={() => switchCharacterRef.current()}
+          onClick={() => switchHeadRef.current()}
           className="bg-black/60 border border-cyan-500/30 text-cyan-400 px-4 py-2 rounded font-mono text-sm uppercase hover:bg-black/80 transition-colors backdrop-blur pointer-events-auto"
         >
-          Switch Character (C)
+          Switch Head (H)
         </button>
       </div>
 
       {/* Character Customizer Overlay */}
       {showCustomizer && (
-        <div className="absolute top-20 right-4 w-64 bg-black/80 backdrop-blur-md border border-cyan-500/30 rounded-lg p-4 z-50 pointer-events-auto flex flex-col gap-4 shadow-2xl">
+        <div className="absolute top-20 right-4 w-64 bg-black/80 backdrop-blur-md border border-cyan-500/30 rounded-lg p-4 z-50 pointer-events-auto flex flex-col gap-4 shadow-2xl max-h-[calc(100vh-6rem)] overflow-y-auto custom-scrollbar">
           <div className="flex justify-between items-center border-b border-cyan-500/30 pb-2">
             <h3 className="text-cyan-400 font-mono text-sm uppercase tracking-wider">Customizer</h3>
             <button onClick={() => setShowCustomizer(false)} className="text-cyan-500 hover:text-cyan-300">
@@ -1964,13 +2131,325 @@ export default function App() {
             />
           </div>
 
+          <div className="flex flex-col gap-1 mt-2">
+            <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
+              <span>Width</span><span>{customWidth.toFixed(2)}x</span>
+            </label>
+            <input type="range" min="0.5" max="2.0" step="0.05" value={customWidth} onChange={(e) => setCustomWidth(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
+          </div>
+          <div className="flex flex-col gap-1 mt-2">
+            <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
+              <span>Height</span><span>{customHeight.toFixed(2)}x</span>
+            </label>
+            <input type="range" min="0.5" max="2.0" step="0.05" value={customHeight} onChange={(e) => setCustomHeight(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
+          </div>
+          <div className="flex flex-col gap-1 mt-2">
+            <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
+              <span>Depth</span><span>{customDepth.toFixed(2)}x</span>
+            </label>
+            <input type="range" min="0.5" max="2.0" step="0.05" value={customDepth} onChange={(e) => setCustomDepth(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
+          </div>
+          <div className="flex flex-col gap-1 mt-2">
+            <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
+              <span>Metalness</span><span>{customMetalness.toFixed(2)}</span>
+            </label>
+            <input type="range" min="0.0" max="1.0" step="0.01" value={customMetalness} onChange={(e) => setCustomMetalness(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
+          </div>
+          <div className="flex flex-col gap-1 mt-2">
+            <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
+              <span>Roughness</span><span>{customRoughness.toFixed(2)}</span>
+            </label>
+            <input type="range" min="0.0" max="1.0" step="0.01" value={customRoughness} onChange={(e) => setCustomRoughness(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
+          </div>
+
+          {/* Rigged Bone scaling controls */}
+          <div className="border-t border-cyan-500/30 pt-3 mt-2">
+            <h4 className="text-[10px] text-cyan-400 font-mono uppercase tracking-wider mb-2">Bone Proportions (Rigged)</h4>
+            <div className="flex flex-col gap-1">
+              <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
+                <span>Head Scale</span><span>{customHeadScale.toFixed(2)}x</span>
+              </label>
+              <input type="range" min="0.5" max="2.0" step="0.05" value={customHeadScale} onChange={(e) => setCustomHeadScale(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
+            </div>
+            <div className="flex flex-col gap-1 mt-2">
+              <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
+                <span>Leg Length</span><span>{customLegLength.toFixed(2)}x</span>
+              </label>
+              <input type="range" min="0.5" max="2.0" step="0.05" value={customLegLength} onChange={(e) => setCustomLegLength(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
+            </div>
+            <div className="flex flex-col gap-1 mt-2">
+              <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
+                <span>Arm Length</span><span>{customArmLength.toFixed(2)}x</span>
+              </label>
+              <input type="range" min="0.5" max="2.0" step="0.05" value={customArmLength} onChange={(e) => setCustomArmLength(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
+            </div>
+            <div className="flex flex-col gap-1 mt-2">
+              <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
+                <span>Torso Thickness</span><span>{customTorsoThickness.toFixed(2)}x</span>
+              </label>
+              <input type="range" min="0.5" max="2.0" step="0.05" value={customTorsoThickness} onChange={(e) => setCustomTorsoThickness(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
+            </div>
+          </div>
+
+          {/* Advanced Material controls */}
+          <div className="border-t border-cyan-500/30 pt-3 mt-2">
+            <h4 className="text-[10px] text-cyan-400 font-mono uppercase tracking-wider mb-2">Cyber Prototype Effects</h4>
+            <div className="flex flex-col gap-1">
+              <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
+                <span>Neon Glow Intensity</span><span>{glowIntensity.toFixed(2)}</span>
+              </label>
+              <input type="range" min="0.0" max="5.0" step="0.1" value={glowIntensity} onChange={(e) => setGlowIntensity(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
+            </div>
+            
+            <div className="flex flex-col gap-1 mt-2">
+              <label className="text-xs text-cyan-200 font-mono tracking-wide">Neon Glow Color</label>
+              <input 
+                type="color" 
+                value={glowColor} 
+                onChange={(e) => setGlowColor(e.target.value)}
+                className="w-full h-8 rounded cursor-pointer bg-transparent border border-cyan-500/50"
+              />
+            </div>
+
+            <div className="flex items-center justify-between mt-3">
+              <span className="text-xs text-cyan-200 font-mono tracking-wide">Wireframe Mode</span>
+              <input 
+                type="checkbox" 
+                checked={wireframe}
+                onChange={(e) => setWireframe(e.target.checked)}
+                className="w-4 h-4 rounded bg-transparent border border-cyan-500/50 accent-cyan-400 cursor-pointer"
+              />
+            </div>
+
+            <div className="flex items-center justify-between mt-3">
+              <span className="text-xs text-cyan-200 font-mono tracking-wide">Glassy Hologram</span>
+              <input 
+                type="checkbox" 
+                checked={hologram}
+                onChange={(e) => setHologram(e.target.checked)}
+                className="w-4 h-4 rounded bg-transparent border border-cyan-500/50 accent-cyan-400 cursor-pointer"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between border-t border-cyan-500/30 pt-3">
+            <span className="text-xs text-cyan-200 font-mono tracking-wide">Torso Visible</span>
+            <input 
+              type="checkbox" 
+              checked={torsoVisible}
+              onChange={(e) => setTorsoVisible(e.target.checked)}
+              className="w-4 h-4 rounded bg-transparent border border-cyan-500/50 accent-cyan-400 cursor-pointer"
+            />
+          </div>
+
+          <div className="flex items-center justify-between border-t border-cyan-500/30 pt-3">
+            <span className="text-xs text-cyan-200 font-mono tracking-wide">Head Style</span>
+            <button 
+              onClick={() => switchHeadRef.current()}
+              className="px-2 py-1 bg-cyan-500/20 border border-cyan-500/50 rounded text-xs font-mono text-cyan-300 hover:bg-cyan-500/30 uppercase tracking-wide cursor-pointer transition-colors"
+            >
+              {headStyle === 0 ? 'Original' : headStyle === 1 ? 'Custom GLB' : headStyle === 2 ? 'Cyber Helmet' : 'Clown Head'}
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-2 border-t border-cyan-500/30 pt-3">
+            <label className="text-xs text-cyan-200 font-mono tracking-wide">Custom Head (.glb)</label>
+            <div className="flex flex-col gap-1">
+              <input 
+                type="file" 
+                id="custom-head-upload" 
+                accept=".glb,.gltf" 
+                className="hidden" 
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setUploadedHeadName(file.name);
+                  const blobUrl = URL.createObjectURL(file);
+                  if (localAnimatorRef.current) {
+                    localAnimatorRef.current.setHeadStyle(1, blobUrl);
+                    setHeadStyle(1);
+                  }
+                }}
+              />
+              <label 
+                htmlFor="custom-head-upload"
+                className="w-full py-1.5 px-3 border border-dashed border-cyan-500/50 hover:border-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 rounded text-center text-xs text-cyan-300 font-mono cursor-pointer transition-all uppercase tracking-wider block"
+              >
+                Upload Head GLB
+              </label>
+              {uploadedHeadName && (
+                <div className="text-[10px] text-cyan-400 font-mono text-center truncate">
+                  Loaded: {uploadedHeadName}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 border-t border-cyan-500/30 pt-3">
+            <label className="text-xs text-cyan-200 font-mono tracking-wide">Custom Character (.glb)</label>
+            <div className="flex flex-col gap-1">
+              <input 
+                type="file" 
+                id="custom-char-upload" 
+                accept=".glb,.gltf" 
+                className="hidden" 
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setUploadedCharName(file.name);
+                  const blobUrl = URL.createObjectURL(file);
+                  if (localAnimatorRef.current) {
+                    localAnimatorRef.current.loadModelAndAnimations(blobUrl).catch(err => {
+                      console.error("Failed to load custom character model:", err);
+                    });
+                  }
+                }}
+              />
+              <label 
+                htmlFor="custom-char-upload"
+                className="w-full py-1.5 px-3 border border-dashed border-cyan-500/50 hover:border-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 rounded text-center text-xs text-cyan-300 font-mono cursor-pointer transition-all uppercase tracking-wider block"
+              >
+                Upload Character GLB
+              </label>
+              {uploadedCharName && (
+                <div className="text-[10px] text-cyan-400 font-mono text-center truncate">
+                  Loaded: {uploadedCharName}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 border-t border-cyan-500/30 pt-3">
+            <label className="text-xs text-cyan-200 font-mono tracking-wide">Custom Tree (.glb)</label>
+            <div className="flex flex-col gap-1">
+              <input 
+                type="file" 
+                id="custom-tree-upload" 
+                accept=".glb,.gltf" 
+                className="hidden" 
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setUploadedTreeName(file.name);
+                  const blobUrl = URL.createObjectURL(file);
+                  if (worldGridRef.current) {
+                    try {
+                      worldGridRef.current.rebuildWorld();
+                      await worldGridRef.current.loadAssets(blobUrl);
+                    } catch (err) {
+                      console.error("Failed to load custom tree model:", err);
+                    }
+                  }
+                }}
+              />
+              <label 
+                htmlFor="custom-tree-upload"
+                className="w-full py-1.5 px-3 border border-dashed border-cyan-500/50 hover:border-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 rounded text-center text-xs text-cyan-300 font-mono cursor-pointer transition-all uppercase tracking-wider block"
+              >
+                Upload Tree GLB
+              </label>
+              {uploadedTreeName && (
+                <div className="text-[10px] text-cyan-400 font-mono text-center truncate">
+                  Loaded: {uploadedTreeName}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="border-t border-cyan-500/30 pt-3 flex flex-col gap-2">
+            <label className="text-xs text-cyan-200 font-mono tracking-wide flex justify-between">
+              <span>GitHub Asset Hosting</span>
+            </label>
+            <input 
+              type="text"
+              placeholder="https://raw.githubusercontent.com/user/repo/main/"
+              value={githubAssetUrl}
+              onChange={(e) => setGithubAssetUrl(e.target.value)}
+              className="w-full bg-black/40 border border-cyan-500/30 rounded px-2 py-1 text-xs text-cyan-300 font-mono focus:outline-none focus:border-cyan-400 placeholder-cyan-500/30"
+            />
+            <div className="flex gap-1">
+              <button
+                onClick={async () => {
+                  const cleanedUrl = githubAssetUrl.trim();
+                  if (cleanedUrl) {
+                    localStorage.setItem('xyrtania_github_raw_url', cleanedUrl);
+                  } else {
+                    localStorage.removeItem('xyrtania_github_raw_url');
+                  }
+                  
+                  // Clear character/model caches
+                  CharacterAnimator.clearCaches();
+                  
+                  // Reload active character model
+                  if (localAnimatorRef.current) {
+                    try {
+                      await localAnimatorRef.current.loadModelAndAnimations('/assets/character/Xyrtania_Male_NoMorphs.glb');
+                    } catch (e) {
+                      console.error("Failed to load character model from GitHub:", e);
+                    }
+                  }
+                  
+                  // Reload environment trees
+                  if (worldGridRef.current) {
+                    try {
+                      worldGridRef.current.rebuildWorld();
+                      await worldGridRef.current.loadAssets();
+                    } catch (e) {
+                      console.error("Failed to load tree model from GitHub:", e);
+                    }
+                  }
+                }}
+                className="w-full py-1 bg-cyan-500 hover:bg-cyan-400 text-black font-bold font-mono text-[10px] uppercase rounded transition-all tracking-wider shadow-[0_0_8px_rgba(6,182,212,0.3)] cursor-pointer"
+              >
+                Apply Raw Asset Path
+              </button>
+              {localStorage.getItem('xyrtania_github_raw_url') && (
+                <button
+                  onClick={async () => {
+                    localStorage.removeItem('xyrtania_github_raw_url');
+                    setGithubAssetUrl('');
+                    
+                    // Clear character/model caches
+                    CharacterAnimator.clearCaches();
+                    
+                    // Reload active character model
+                    if (localAnimatorRef.current) {
+                      try {
+                        await localAnimatorRef.current.loadModelAndAnimations('/assets/character/Xyrtania_Male_NoMorphs.glb');
+                      } catch (e) {
+                        console.error(e);
+                      }
+                    }
+                    
+                    // Reload environment trees
+                    if (worldGridRef.current) {
+                      try {
+                        worldGridRef.current.rebuildWorld();
+                        await worldGridRef.current.loadAssets();
+                      } catch (e) {
+                        console.error(e);
+                      }
+                    }
+                  }}
+                  className="px-2 py-1 bg-red-950/40 hover:bg-red-900/60 border border-red-500/30 text-red-400 font-mono text-[10px] uppercase rounded cursor-pointer"
+                  title="Reset to local workspace assets"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+            <p className="text-[9px] text-cyan-200/50 leading-normal">
+              Prepend asset URLs to fetch models/textures directly from a public GitHub repository branch. Leave blank to load locally.
+            </p>
+          </div>
+
           <div className="border-t border-cyan-500/30 pt-3 flex flex-col gap-2">
             <label className="text-xs text-cyan-200 font-mono tracking-wide flex justify-between">
               <span>Graphics Quality</span>
               <span className="text-[10px] text-cyan-400 uppercase font-bold">{graphicsQuality}</span>
             </label>
             <div className="grid grid-cols-3 gap-1 bg-black/40 p-1 rounded border border-cyan-500/20">
-              {(['low', 'medium', 'high'] as const).map((q) => (
+              {(['potato', 'low', 'medium', 'high'] as const).map((q) => (
                 <button
                   key={q}
                   onClick={() => setGraphicsQuality(q)}
@@ -1989,6 +2468,28 @@ export default function App() {
             </p>
           </div>
         </div>
+      )}
+
+      
+      {showDiagnostics && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur border border-cyan-500/50 p-4 rounded text-cyan-400 font-mono text-[10px] z-[90] min-w-[200px] pointer-events-none">
+          <h3 className="text-center font-bold mb-2 border-b border-cyan-500/30 pb-1">DIAGNOSTICS</h3>
+          <div className="flex justify-between"><span>FPS:</span><span>{fps.toFixed(1)}</span></div>
+          <div className="flex justify-between"><span>Pos:</span><span>X:{px.toFixed(1)} Z:{pz.toFixed(1)}</span></div>
+          <div className="flex justify-between"><span>Chunk:</span><span>{chunkCx}, {chunkCz}</span></div>
+          <div className="flex justify-between"><span>Draw Calls:</span><span id="diag-drawcalls">0</span></div>
+          
+          
+          <div className="flex justify-between"><span>Triangles:</span><span id="diag-triangles">0</span></div>
+          <div className="flex justify-between"><span>CPU (ms):</span><span id="diag-cpu">0</span></div>
+          <button 
+            className="w-full mt-2 bg-red-900/50 hover:bg-red-700/50 text-xs py-1 rounded pointer-events-auto"
+            onClick={(e) => { e.stopPropagation(); setHideCharacter(!hideCharacter); }} onPointerDown={(e) => e.stopPropagation()}>
+            {hideCharacter ? 'Show Character (P)' : 'Hide Character (P)'}
+          </button>
+        </div>
+
+
       )}
 
       {/* Main Viewport Content - WebGL Canvas inside the underlaid layout */}

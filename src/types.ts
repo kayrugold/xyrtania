@@ -17,6 +17,7 @@ export interface PlayerState {
   animationState?: string;
   customColor?: string;
   customScale?: number;
+  torsoVisible?: boolean;
   position: THREE.Vector3;
   velocity: THREE.Vector3;
   direction: number; // yaw angle in radians
@@ -32,6 +33,9 @@ export interface PlayerState {
   isCrouching?: boolean;
   isProne?: boolean;
   wetness?: number;
+  customHeadUrl?: string;
+  headStyle?: number;
+  morphTargets?: Record<string, number>;
 }
 
 export interface Chunk {
@@ -41,3 +45,26 @@ export interface Chunk {
   terrainMesh: THREE.Mesh;
   clutterMeshes: THREE.Object3D[];
 }
+
+export function resolveAssetUrl(url: string): string {
+  if (!url) return url;
+  
+  // If the url is already an absolute http/https url or a blob url, return it directly
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:')) {
+    return url;
+  }
+  
+  const githubRawUrl = localStorage.getItem('xyrtania_github_raw_url');
+  if (githubRawUrl) {
+    let base = githubRawUrl.trim();
+    if (!base.endsWith('/')) {
+      base += '/';
+    }
+    // Remove leading slash of the asset url to prevent double slashes
+    const cleanUrl = url.startsWith('/') ? url.slice(1) : url;
+    return base + cleanUrl;
+  }
+  
+  return url;
+}
+

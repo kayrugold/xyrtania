@@ -1,0 +1,186 @@
+--- src/App.tsx
++++ src/App.tsx
+@@ -41,6 +41,19 @@
+   const [showCustomizer, setShowCustomizer] = useState(false);
+   const [customColor, setCustomColor] = useState<string>('#ffffff');
+   const [customScale, setCustomScale] = useState<number>(1.0);
++  const [customWidth, setCustomWidth] = useState<number>(1.0);
++  const [customHeight, setCustomHeight] = useState<number>(1.0);
++  const [customDepth, setCustomDepth] = useState<number>(1.0);
++  const [customMetalness, setCustomMetalness] = useState<number>(0.0);
++  const [customRoughness, setCustomRoughness] = useState<number>(0.8);
++  const [customHeadScale, setCustomHeadScale] = useState<number>(1.0);
++  const [customLegLength, setCustomLegLength] = useState<number>(1.0);
++  const [customArmLength, setCustomArmLength] = useState<number>(1.0);
++  const [customTorsoThickness, setCustomTorsoThickness] = useState<number>(1.0);
++  const [glowIntensity, setGlowIntensity] = useState<number>(0.0);
++  const [glowColor, setGlowColor] = useState<string>('#00ffff');
++  const [wireframe, setWireframe] = useState<boolean>(false);
++  const [hologram, setHologram] = useState<boolean>(false);
+   const [torsoVisible, setTorsoVisible] = useState<boolean>(true);
+   const [morphTargets, setMorphTargets] = useState<Record<string, number>>({});
+   const [headStyle, setHeadStyle] = useState<number>(0);
+@@ -83,9 +96,28 @@
+   useEffect(() => {
+     if (localAnimatorRef.current) {
+       localAnimatorRef.current.setCustomization(customColor, customScale, torsoVisible);
+-      localAnimatorRef.current.applyCustomization(morphTargets);
+-    }
+-  }, [customColor, customScale, torsoVisible, morphTargets]);
++      localAnimatorRef.current.applyCustomization({
++        ...morphTargets,
++        width: customWidth,
++        height: customHeight,
++        depth: customDepth,
++        metalness: customMetalness,
++        roughness: customRoughness,
++        headScale: customHeadScale,
++        legLength: customLegLength,
++        armLength: customArmLength,
++        torsoThickness: customTorsoThickness,
++        glowIntensity: glowIntensity,
++        glowColor: glowColor,
++        wireframe: wireframe ? 1 : 0,
++        hologram: hologram ? 1 : 0,
++      });
++    }
++  }, [
++    customColor, customScale, torsoVisible, morphTargets, customWidth, customHeight, customDepth, 
++    customMetalness, customRoughness, customHeadScale, customLegLength, customArmLength, 
++    customTorsoThickness, glowIntensity, glowColor, wireframe, hologram
++  ]);
+ 
+   // Fullscreen support state detection
+   useEffect(() => {
+@@ -1800,7 +1832,22 @@
+         state.torsoVisible = animator.torsoVisible;
+         state.headStyle = animator.currentHeadStyle;
+         state.customHeadUrl = animator.customHeadUrl || undefined;
+-        state.morphTargets = morphTargets;
++        state.morphTargets = {
++          ...morphTargets,
++          width: customWidth,
++          height: customHeight,
++          depth: customDepth,
++          metalness: customMetalness,
++          roughness: customRoughness,
++          headScale: customHeadScale,
++          legLength: customLegLength,
++          armLength: customArmLength,
++          torsoThickness: customTorsoThickness,
++          glowIntensity: glowIntensity,
++          glowColor: glowColor,
++          wireframe: wireframe ? 1 : 0,
++          hologram: hologram ? 1 : 0,
++        };
+         animator.updateNametag(state.displayName);
+         networkManager.broadcastState(state);
+ 
+@@ -2014,7 +2061,106 @@
+           </div>
+ 
+           
+-
++          <div className="flex flex-col gap-1 mt-2">
++            <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
++              <span>Width</span><span>{customWidth.toFixed(2)}x</span>
++            </label>
++            <input type="range" min="0.5" max="2.0" step="0.05" value={customWidth} onChange={(e) => setCustomWidth(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
++          </div>
++          <div className="flex flex-col gap-1 mt-2">
++            <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
++              <span>Height</span><span>{customHeight.toFixed(2)}x</span>
++            </label>
++            <input type="range" min="0.5" max="2.0" step="0.05" value={customHeight} onChange={(e) => setCustomHeight(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
++          </div>
++          <div className="flex flex-col gap-1 mt-2">
++            <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
++              <span>Depth</span><span>{customDepth.toFixed(2)}x</span>
++            </label>
++            <input type="range" min="0.5" max="2.0" step="0.05" value={customDepth} onChange={(e) => setCustomDepth(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
++          </div>
++          <div className="flex flex-col gap-1 mt-2">
++            <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
++              <span>Metalness</span><span>{customMetalness.toFixed(2)}</span>
++            </label>
++            <input type="range" min="0.0" max="1.0" step="0.01" value={customMetalness} onChange={(e) => setCustomMetalness(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
++          </div>
++          <div className="flex flex-col gap-1 mt-2">
++            <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
++              <span>Roughness</span><span>{customRoughness.toFixed(2)}</span>
++            </label>
++            <input type="range" min="0.0" max="1.0" step="0.01" value={customRoughness} onChange={(e) => setCustomRoughness(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
++          </div>
++
++          {/* Rigged Bone scaling controls */}
++          <div className="border-t border-cyan-500/30 pt-3 mt-2">
++            <h4 className="text-[10px] text-cyan-400 font-mono uppercase tracking-wider mb-2">Bone Proportions (Rigged)</h4>
++            <div className="flex flex-col gap-1">
++              <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
++                <span>Head Scale</span><span>{customHeadScale.toFixed(2)}x</span>
++              </label>
++              <input type="range" min="0.5" max="2.0" step="0.05" value={customHeadScale} onChange={(e) => setCustomHeadScale(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
++            </div>
++            <div className="flex flex-col gap-1 mt-2">
++              <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
++                <span>Leg Length</span><span>{customLegLength.toFixed(2)}x</span>
++              </label>
++              <input type="range" min="0.5" max="2.0" step="0.05" value={customLegLength} onChange={(e) => setCustomLegLength(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
++            </div>
++            <div className="flex flex-col gap-1 mt-2">
++              <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
++                <span>Arm Length</span><span>{customArmLength.toFixed(2)}x</span>
++              </label>
++              <input type="range" min="0.5" max="2.0" step="0.05" value={customArmLength} onChange={(e) => setCustomArmLength(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
++            </div>
++            <div className="flex flex-col gap-1 mt-2">
++              <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
++                <span>Torso Thickness</span><span>{customTorsoThickness.toFixed(2)}x</span>
++              </label>
++              <input type="range" min="0.5" max="2.0" step="0.05" value={customTorsoThickness} onChange={(e) => setCustomTorsoThickness(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
++            </div>
++          </div>
++
++          {/* Advanced Material controls */}
++          <div className="border-t border-cyan-500/30 pt-3 mt-2">
++            <h4 className="text-[10px] text-cyan-400 font-mono uppercase tracking-wider mb-2">Cyber Prototype Effects</h4>
++            <div className="flex flex-col gap-1">
++              <label className="flex items-center justify-between text-xs text-cyan-200 font-mono tracking-wide">
++                <span>Neon Glow Intensity</span><span>{glowIntensity.toFixed(2)}</span>
++              </label>
++              <input type="range" min="0.0" max="5.0" step="0.1" value={glowIntensity} onChange={(e) => setGlowIntensity(parseFloat(e.target.value))} className="w-full accent-cyan-400" />
++            </div>
++            
++            <div className="flex flex-col gap-1 mt-2">
++              <label className="text-xs text-cyan-200 font-mono tracking-wide">Neon Glow Color</label>
++              <input 
++                type="color" 
++                value={glowColor} 
++                onChange={(e) => setGlowColor(e.target.value)}
++                className="w-full h-8 rounded cursor-pointer bg-transparent border border-cyan-500/50"
++              />
++            </div>
++
++            <div className="flex items-center justify-between mt-3">
++              <span className="text-xs text-cyan-200 font-mono tracking-wide">Wireframe Mode</span>
++              <input 
++                type="checkbox" 
++                checked={wireframe}
++                onChange={(e) => setWireframe(e.target.checked)}
++                className="w-4 h-4 rounded bg-transparent border border-cyan-500/50 accent-cyan-400 cursor-pointer"
++              />
++            </div>
++
++            <div className="flex items-center justify-between mt-3">
++              <span className="text-xs text-cyan-200 font-mono tracking-wide">Glassy Hologram</span>
++              <input 
++                type="checkbox" 
++                checked={hologram}
++                onChange={(e) => setHologram(e.target.checked)}
++                className="w-4 h-4 rounded bg-transparent border border-cyan-500/50 accent-cyan-400 cursor-pointer"
++              />
++            </div>
++          </div>
+ 
+           <div className="flex items-center justify-between border-t border-cyan-500/30 pt-3">
+             <span className="text-xs text-cyan-200 font-mono tracking-wide">Torso Visible</span>

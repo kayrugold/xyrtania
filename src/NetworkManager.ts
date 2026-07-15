@@ -171,6 +171,7 @@ export class NetworkManager {
         if (data.rotation !== undefined) peer.state.direction = data.rotation;
         
         if (data.customColor !== undefined) peer.state.customColor = data.customColor;
+        if (data.morphTargets !== undefined) peer.state.morphTargets = data.morphTargets;
         if (data.customScale !== undefined) peer.state.customScale = data.customScale;
         
         if (data.displayName !== undefined && data.displayName !== peer.state.displayName) {
@@ -218,7 +219,7 @@ export class NetworkManager {
     
     try {
       const initialDisplayName = localStorage.getItem('xyrtania_display_name') || 'Anonymous';
-      const initialAvatarId = '/assets/character/peter/peteridle.fbx'; // default
+      const initialAvatarId = '/assets/character/Xyrtania_Male_NoMorphs.glb'; // default
 
       // Clean up any stale old-format session variables
       localStorage.removeItem('xyrtania_last_room_id');
@@ -294,12 +295,15 @@ export class NetworkManager {
           const peer = this.peers.get(sessionId)!;
           peer.state.position.set(player.x, player.y, player.z);
           peer.state.direction = player.rotation;
-          peer.state.modelUrl = player.avatarId || '/assets/character/peter/peteridle.fbx';
+          peer.state.modelUrl = player.avatarId || '/assets/character/Xyrtania_Male_NoMorphs.glb';
           peer.state.displayName = player.displayName;
           peer.state.currentAnimation = player.currentAnimation || 'neutral_idle';
           peer.state.animationState = player.animationState || 'neutral_idle';
           peer.state.isCrouching = player.isCrouching;
           peer.state.isProne = player.isProne;
+          try {
+              peer.state.morphTargets = player.morphTargetsJson ? JSON.parse(player.morphTargetsJson) : {};
+          } catch(e) { peer.state.morphTargets = {}; }
 
           if (this.onPeerJoin) this.onPeerJoin(sessionId);
 
@@ -312,10 +316,15 @@ export class NetworkManager {
               peerToUpdate.state.position.y = player.y;
               peerToUpdate.state.position.z = player.z;
               peerToUpdate.state.direction = player.rotation;
-              peerToUpdate.state.modelUrl = player.avatarId || '/assets/character/peter/peteridle.fbx';
+              peerToUpdate.state.modelUrl = player.avatarId || '/assets/character/Xyrtania_Male_NoMorphs.glb';
               
               const oldDisplayName = peerToUpdate.state.displayName;
               peerToUpdate.state.displayName = player.displayName;
+              if (player.morphTargetsJson !== undefined) {
+                  try {
+                      peerToUpdate.state.morphTargets = JSON.parse(player.morphTargetsJson);
+                  } catch(e) {}
+              }
               if (player.displayName !== undefined && player.displayName !== oldDisplayName) {
                   if (this.onPeerDisplayNameChange) {
                       this.onPeerDisplayNameChange(sessionId, player.displayName);
@@ -425,6 +434,8 @@ export class NetworkManager {
         customColor: state.customColor || "",
         customScale: typeof state.customScale === 'number' ? state.customScale : 1.0,
         isCrouching: !!state.isCrouching,
+        morphTargetsJson: JSON.stringify(state.morphTargets || {}),
+        morphTargets: state.morphTargets || {},
         isProne: !!state.isProne
     };
   }

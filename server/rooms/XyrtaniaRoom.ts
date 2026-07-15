@@ -15,6 +15,7 @@ export class Player extends Schema {
   @type("number") customScale: number = 1.0;
   @type("boolean") isCrouching: boolean = false;
   @type("boolean") isProne: boolean = false;
+  @type("string") morphTargetsJson: string = "{}";
 }
 
 export class XyrtaniaState extends Schema {
@@ -40,6 +41,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
         if (data.customScale !== undefined) player.customScale = data.customScale;
         if (data.isCrouching !== undefined) player.isCrouching = data.isCrouching;
         if (data.isProne !== undefined) player.isProne = data.isProne;
+        if (data.morphTargetsJson !== undefined) player.morphTargetsJson = data.morphTargetsJson;
       }
     });
 

@@ -1,0 +1,40 @@
+--- src/main.tsx
++++ src/main.tsx
+@@ -38,7 +38,36 @@
+   originalConsoleWarn.apply(console, args);
+ };
+ 
+-// No patch needed since setCrossOrigin was removed in CharacterAnimator
++// Disable ImageBitmap in browsers to force THREE.ImageLoader, which we can patch easily
++if (typeof window !== 'undefined') {
++  (window as any).createImageBitmap = undefined;
++  (globalThis as any).createImageBitmap = undefined;
++}
++
++// We patch THREE.ImageLoader to never set crossOrigin for blob: URLs.
++// Setting crossOrigin on blob URLs causes modern browsers to reject loading them inside iframe contexts.
++if (THREE.ImageLoader && THREE.ImageLoader.prototype) {
++  const originalLoad = THREE.ImageLoader.prototype.load;
++  THREE.ImageLoader.prototype.load = function (url: string, onLoad?: any, onProgress?: any, onError?: any) {
++    if (url && url.startsWith('blob:')) {
++      const originalCrossOrigin = this.crossOrigin;
++      this.crossOrigin = undefined;
++      const result = originalLoad.call(this, url, onLoad, onProgress, onError);
++      this.crossOrigin = originalCrossOrigin;
++      return result;
++    }
++    return originalLoad.call(this, url, onLoad, onProgress, onError);
++  };
++}
++
++if (THREE.TextureLoader && THREE.TextureLoader.prototype) {
++  const originalLoad = THREE.TextureLoader.prototype.load;
++  THREE.TextureLoader.prototype.load = function (url: string, onLoad?: any, onProgress?: any, onError?: any) {
++    if (url && url.startsWith('blob:')) {
++      this.crossOrigin = undefined;
++    }
++    return originalLoad.call(this, url, onLoad, onProgress, onError);
++  };
++}
+ 
+ createRoot(document.getElementById('root')!).render(

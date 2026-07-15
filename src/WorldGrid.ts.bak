@@ -1,7 +1,5 @@
 import * as THREE from 'three';
-import { Chunk, resolveAssetUrl } from './types';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { Chunk } from './types';
 
 export class WorldGrid {
   private scene: THREE.Scene;
@@ -10,8 +8,6 @@ export class WorldGrid {
   private halfMapBounds = 42000; // Total conceptual bounds are 84,000 x 84,000
 
   // Shared geometry and material caches for the procedural assets to boost rendering speed
-  public treePrototypes: { meshes: THREE.Mesh[] }[] = [];
-
   private sharedGeometries: {
     ground: THREE.PlaneGeometry;
     trunk: THREE.CylinderGeometry;
@@ -27,91 +23,6 @@ export class WorldGrid {
     grass: THREE.MeshStandardMaterial;
     rock: THREE.MeshStandardMaterial;
   };
-
-  public async loadAssets(customUrl?: string) {
-    const loader = new GLTFLoader(); loader.setCrossOrigin("");
-    const dracoLoader = new DRACOLoader();
-    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
-    loader.setDRACOLoader(dracoLoader); 
-    
-    // 4 tree models
-    const treeFiles = customUrl ? [customUrl] : [
-      resolveAssetUrl('/assets/environment/willowtree.glb'),
-      resolveAssetUrl('/assets/environment/oaktree.glb'),
-      resolveAssetUrl('/assets/environment/bonsaitree.glb'),
-      resolveAssetUrl('/assets/environment/pinetree.glb')
-    ];
-
-    if (customUrl) {
-      this.treePrototypes = [];
-    }
-    
-    await Promise.all(treeFiles.map((url) => {
-      return new Promise<void>((resolve) => {
-        loader.load(url, (gltf) => {
-          try {
-              gltf.scene.updateMatrixWorld(true);
-              const treeMeshes: THREE.Mesh[] = [];
-              let minY = Infinity;
-
-              // First pass: find the minimum Y
-              gltf.scene.traverse((child) => {
-                if ((child as THREE.Mesh).isMesh) {
-                  const mesh = child as THREE.Mesh;
-                  const geom = mesh.geometry.clone();
-                  geom.applyMatrix4(mesh.matrixWorld);
-                  geom.computeBoundingBox();
-                  if (geom.boundingBox && geom.boundingBox.min.y < minY) {
-                      minY = geom.boundingBox.min.y;
-                  }
-                }
-              });
-
-              // Second pass: clone, translate by -minY so bottom is at 0, and save
-              gltf.scene.traverse((child) => {
-                if ((child as THREE.Mesh).isMesh) {
-                  const mesh = child as THREE.Mesh;
-                  const geom = mesh.geometry.clone();
-                  geom.applyMatrix4(mesh.matrixWorld);
-                  if (minY !== Infinity) {
-                      geom.translate(0, -minY, 0);
-                  }
-                  geom.computeBoundingBox();
-                  
-                  // Optimize material for foliage
-                  const mat = (mesh.material as THREE.Material).clone();
-                  if ((mat as any).map) {
-                      mat.transparent = false;
-                      mat.alphaTest = 0.5;
-                      mat.depthWrite = true;
-                  }
-                  const clonedMesh = new THREE.Mesh(geom, mat);
-
-                  clonedMesh.castShadow = false; // Turn off shadows for huge fps boost
-                  clonedMesh.receiveShadow = false;
-                  treeMeshes.push(clonedMesh);
-                }
-              });
-              
-              if (treeMeshes.length > 0) {
-                this.treePrototypes.push({ meshes: treeMeshes });
-              }
-          } catch(e) {
-              console.error("Error processing tree gltf", e);
-          }
-          resolve();
-        }, undefined, (err) => {
-          console.error(`CRITICAL TREE LOAD ERROR ${url}:`, err);
-          resolve();
-        });
-      });
-    }));
-    
-    console.log("Tree prototypes loaded count:", this.treePrototypes.length);
-    if (this.treePrototypes.length > 0) {
-       this.clearChunks();
-    }
-  }
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -130,24 +41,19 @@ export class WorldGrid {
     };
 
     // Global water plane for the lake
-    const waterGeo = new THREE.PlaneGeometry(200, 200, 1, 1);
+    const waterGeo = new THREE.PlaneGeometry(100, 100);
     const waterMat = new THREE.MeshStandardMaterial({
       color: 0x3b82f6,
       transparent: true,
       opacity: 0.6,
       roughness: 0.1,
       metalness: 0.1,
-      // side: THREE.DoubleSide
+      side: THREE.DoubleSide
     });
     const waterPlane = new THREE.Mesh(waterGeo, waterMat);
     waterPlane.rotation.x = -Math.PI / 2;
     waterPlane.position.set(50, -0.5, 50); // Water level over the lake
-    
-    const isPotato = localStorage.getItem('xyrtania_quality') === 'potato';
-    if (!isPotato) {
-      this.scene.add(waterPlane);
-    }
-
+    this.scene.add(waterPlane);
 
     // Low-poly material set representing beautiful stylized environment
     this.sharedMaterials = {
@@ -267,10 +173,7 @@ export class WorldGrid {
   }
 
   // Procedurally creates a terrain block of 40x40 size
-  
   private generateChunk(cx: number, cz: number): void {
-    const isPotato = localStorage.getItem('xyrtania_quality') === 'potato';
-
     const chunkGroup = new THREE.Group();
     chunkGroup.name = `chunk_${cx}_${cz}`;
 
@@ -282,7 +185,7 @@ export class WorldGrid {
     const chunkWorldZ = cz * this.chunkSize;
 
     // Create Ground Mesh (with vertex displacement for lakes)
-    const groundGeo = isPotato ? new THREE.PlaneGeometry(this.chunkSize, this.chunkSize, 1, 1) : this.sharedGeometries.ground.clone();
+    const groundGeo = this.sharedGeometries.ground.clone();
     const positions = groundGeo.attributes.position;
     for (let j = 0; j < positions.count; j++) {
        // Plane is placed at chunkWorldX, chunkWorldZ, but geometry is centered at 0,0 locally
@@ -309,7 +212,7 @@ export class WorldGrid {
     const clutter: THREE.Object3D[] = [];
 
     // Determine obstacle density [5 to 15 assets per chunk]
-    const clutterCount = isPotato ? 0 : 1;
+    const clutterCount = 6 + Math.floor(this.seededRandom(baseSeed, 1) * 12);
 
     for (let i = 0; i < clutterCount; i++) {
       const rollType = this.seededRandom(baseSeed, i * 3 + 2);
@@ -327,30 +230,53 @@ export class WorldGrid {
       const groundH = this.getGroundHeight(spawnX, spawnZ);
 
       if (rollType < 0.45) {
-        // --- GATHER TREE TRANSFORMS ---
+        // --- SPAWN PROCEDURAL AUTUMN TREE ---
         if (groundH < -1.0) continue; // no trees underwater
+        const treeGroup = new THREE.Group();
+        treeGroup.position.set(spawnX, groundH, spawnZ);
+
+        // Trunk
+        const trunkMesh = new THREE.Mesh(this.sharedGeometries.trunk, this.sharedMaterials.trunk);
+        trunkMesh.position.y = 1.5;
+        trunkMesh.castShadow = true;
+        trunkMesh.receiveShadow = true;
+        treeGroup.add(trunkMesh);
+
+        // Leaves / Foliage cones (cone-layered effect)
+        const foliageStyleIdx = Math.floor(this.seededRandom(baseSeed, i * 14 + 1) * this.sharedMaterials.autumnFoliage.length);
+        const leafMaterial = this.sharedMaterials.autumnFoliage[foliageStyleIdx];
+
+        // Layer 1: Bottom Foliage cone
+        const f1 = new THREE.Mesh(this.sharedGeometries.foliageCones[0], leafMaterial);
+        f1.position.y = 3.2;
+        f1.castShadow = true;
+        treeGroup.add(f1);
+
+        // Layer 2: Mid Foliage cone
+        const f2 = new THREE.Mesh(this.sharedGeometries.foliageCones[1], leafMaterial);
+        f2.position.y = 4.7;
+        f2.castShadow = true;
+        treeGroup.add(f2);
+
+        // Layer 3: Top Foliage cone
+        const f3 = new THREE.Mesh(this.sharedGeometries.foliageCones[2], leafMaterial);
+        f3.position.y = 5.8;
+        f3.castShadow = true;
+        treeGroup.add(f3);
+
+        // Subtle random scaling
+        const treeScale = 0.75 + this.seededRandom(baseSeed, i * 19) * 0.5;
+        treeGroup.scale.set(treeScale, treeScale, treeScale);
         
-        // The custom tree mesh is likely authored at a different scale, applying a multiplier
-        const baseTreeScale = 1.0;
-        const treeScale = (5.0 + this.seededRandom(baseSeed, i * 19) * 20.0) * baseTreeScale;
-        const treeRotY = this.seededRandom(baseSeed, i * 23) * Math.PI * 2;
-        
-        // We will store the transforms and create an InstancedMesh at the end of the chunk generation
-        if (!chunkGroup.userData.treeTransforms) {
-            chunkGroup.userData.treeTransforms = [];
-        }
-        
-        // Choose a random tree prototype if available
-        const treeTypeIndex = this.treePrototypes.length > 0 ? Math.floor(this.seededRandom(baseSeed, i * 29) * this.treePrototypes.length) : 0;
-        
-        chunkGroup.userData.treeTransforms.push({
-            position: new THREE.Vector3(spawnX, groundH, spawnZ),
-            rotation: new THREE.Euler(0, treeRotY, 0),
-            scale: new THREE.Vector3(treeScale, treeScale, treeScale),
-            radius: 0.03 * treeScale, // Adjusted collision radius to match the visual trunk of the custom mesh
-            height: 8.0 * treeScale,
-            treeTypeIndex
-        });
+        treeGroup.userData = {
+          isObstacle: true,
+          type: 'tree',
+          radius: 0.4 * treeScale,
+          height: 8.0 * treeScale
+        };
+
+        chunkGroup.add(treeGroup);
+        clutter.push(treeGroup);
 
       } else if (rollType < 0.70) {
         // --- SPAWN STYLIZED ROCK MOUNDS ---
@@ -364,8 +290,8 @@ export class WorldGrid {
           this.seededRandom(baseSeed, i * 9) * Math.PI,
           0
         );
-        rockMesh.castShadow = false;
-        rockMesh.receiveShadow = false;
+        rockMesh.castShadow = true;
+        rockMesh.receiveShadow = true;
         
         rockMesh.userData = {
           isObstacle: true,
@@ -387,7 +313,7 @@ export class WorldGrid {
           isObstacle: false
         };
 
-        const stemsCount = 1 + Math.floor(this.seededRandom(baseSeed, i * 12) * 2);
+        const stemsCount = 3 + Math.floor(this.seededRandom(baseSeed, i * 12) * 4);
         for (let g = 0; g < stemsCount; g++) {
           const grassStem = new THREE.Mesh(this.sharedGeometries.grass, this.sharedMaterials.grass);
           const stemGX = (this.seededRandom(baseSeed, i * 15 + g) - 0.5) * 0.8;
@@ -406,105 +332,6 @@ export class WorldGrid {
         chunkGroup.add(grassGroup);
         clutter.push(grassGroup);
       }
-    }
-
-    // Instantiate the instanced mesh for trees if we have any
-    if (chunkGroup.userData.treeTransforms && chunkGroup.userData.treeTransforms.length > 0) {
-        const transforms = chunkGroup.userData.treeTransforms;
-        if (this.treePrototypes && this.treePrototypes.length > 0) {
-            // Group by treeTypeIndex
-            const groupedTransforms: Record<number, any[]> = {};
-            transforms.forEach((t: any) => {
-                const index = t.treeTypeIndex || 0;
-                if (!groupedTransforms[index]) groupedTransforms[index] = [];
-                groupedTransforms[index].push(t);
-            });
-            
-            for (const [indexStr, tGroup] of Object.entries(groupedTransforms)) {
-                const index = parseInt(indexStr);
-                const proto = this.treePrototypes[index % this.treePrototypes.length];
-                
-                // Add an InstancedMesh for EVERY sub-mesh in the tree prototype
-                proto.meshes.forEach((protoMesh) => {
-                    const instancedTree = new THREE.InstancedMesh(
-                        protoMesh.geometry,
-                        protoMesh.material,
-                        tGroup.length
-                    );
-                    instancedTree.castShadow = false;
-                    instancedTree.receiveShadow = false;
-                    
-                    const dummy = new THREE.Object3D();
-                    tGroup.forEach((t: any, i: number) => {
-                        dummy.position.copy(t.position);
-                        dummy.rotation.copy(t.rotation);
-                        dummy.scale.copy(t.scale);
-                        dummy.updateMatrix();
-                        instancedTree.setMatrixAt(i, dummy.matrix);
-                    });
-                    instancedTree.instanceMatrix.needsUpdate = true;
-                    chunkGroup.add(instancedTree);
-                });
-
-                // Add logic objects for collision just once per tree group
-                tGroup.forEach((t: any) => {
-                    const logicObj = new THREE.Object3D();
-                    logicObj.position.copy(t.position);
-                    logicObj.userData = {
-                        isObstacle: true,
-                        type: 'tree',
-                        radius: t.radius,
-                        height: t.height
-                    };
-                    clutter.push(logicObj);
-                });
-            }
-        } else {
-            // FALLBACK PROCEDURAL TREES (Cylinder trunk + stacked cones)
-            transforms.forEach((t) => {
-                const treeGroup = new THREE.Group();
-                treeGroup.position.copy(t.position);
-                treeGroup.rotation.copy(t.rotation);
-                
-                // Scale is based on baseTreeScale = 10.0. Scale down to human proportions
-                const s = t.scale.x * 0.12;
-                treeGroup.scale.set(s, s, s);
-                
-                // 1. Create Trunk
-                const trunkMesh = new THREE.Mesh(this.sharedGeometries.trunk, this.sharedMaterials.trunk);
-                trunkMesh.position.y = 1.5; // half height of CylinderGeometry(0.3, 0.45, 3)
-                trunkMesh.castShadow = true;
-                trunkMesh.receiveShadow = true;
-                treeGroup.add(trunkMesh);
-                
-                // 2. Select a stable random foliage material from the autumn list
-                const colorIndex = Math.abs(Math.floor(t.position.x * 17 + t.position.z * 23)) % this.sharedMaterials.autumnFoliage.length;
-                const foliageMat = this.sharedMaterials.autumnFoliage[colorIndex];
-                
-                // 3. Create Stacked Foliage Cones
-                const yOffsets = [3.8, 5.3, 6.5];
-                this.sharedGeometries.foliageCones.forEach((coneGeo, idx) => {
-                    const coneMesh = new THREE.Mesh(coneGeo, foliageMat);
-                    coneMesh.position.y = yOffsets[idx];
-                    coneMesh.castShadow = true;
-                    coneMesh.receiveShadow = true;
-                    treeGroup.add(coneMesh);
-                });
-                
-                chunkGroup.add(treeGroup);
-                
-                // Add logical collision object to clutter
-                const logicObj = new THREE.Object3D();
-                logicObj.position.copy(t.position);
-                logicObj.userData = {
-                    isObstacle: true,
-                    type: 'tree',
-                    radius: t.radius,
-                    height: t.height
-                };
-                clutter.push(logicObj);
-            });
-        }
     }
 
     this.scene.add(chunkGroup);
@@ -557,18 +384,6 @@ export class WorldGrid {
         mat.dispose();
       }
     });
-  }
-
-  public rebuildWorld(): void {
-    this.treePrototypeMesh = null; // Reset mesh to reload properly
-    this.clearChunks();
-  }
-
-  public clearChunks(): void {
-    for (const chunk of this.chunks.values()) {
-      this.disposeChunk(chunk);
-    }
-    this.chunks.clear();
   }
 
   // Get current active chunks (for custom collision or positioning checks if needed)

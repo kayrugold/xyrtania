@@ -1,0 +1,90 @@
+--- src/CharacterAnimator.ts
++++ src/CharacterAnimator.ts
+@@ -1272,11 +1272,35 @@
+ 
+   public applyCustomization(state: Record<string, any>) {
+     this.currentCustomizationState = { ...state };
+-    
+-    // Reset group scale to the standard customScale
+-    this.group.scale.setScalar(this.customScale);
+-
+-    // Reset material overrides to standard state
++    // Apply structural transforms based on standard keys
++    if (state.width !== undefined || state.height !== undefined || state.depth !== undefined) {
++      const w = state.width ?? 1.0;
++      const h = state.height ?? 1.0;
++      const d = state.depth ?? 1.0;
++      this.group.scale.set(this.customScale * w, this.customScale * h, this.customScale * d);
++    }
++    
++    // Apply bone modifications for rigged models
++    if (this.headBone) {
++      const hs = state.headScale ?? 1.0;
++      this.headBone.scale.set(hs, hs, hs);
++    }
++    if (this.leftLegBone && this.rightLegBone) {
++      const ll = state.legLength ?? 1.0;
++      this.leftLegBone.scale.set(1.0, ll, 1.0);
++      this.rightLegBone.scale.set(1.0, ll, 1.0);
++    }
++    if (this.leftArmBone && this.rightArmBone) {
++      const al = state.armLength ?? 1.0;
++      this.leftArmBone.scale.set(al, 1.0, 1.0);
++      this.rightArmBone.scale.set(al, 1.0, 1.0);
++    }
++    if (this.spineBone) {
++      const tt = state.torsoThickness ?? 1.0;
++      this.spineBone.scale.set(tt, 1.0, tt);
++    }
++    
++    // Apply material properties to all meshes
+     this.group.traverse((child) => {
+       if ((child as any).isMesh) {
+         const mesh = child as THREE.Mesh;
+@@ -1307,13 +1331,33 @@
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            mats.forEach((mat: any) => {
+              if (mat.isMeshStandardMaterial || mat.isMeshPhysicalMaterial) {
+-                mat.metalness = 0.1;
+-                mat.roughness = 0.6;
+-                mat.emissive.setHex(0x000000);
+-                mat.emissiveIntensity = 0.0;
+-                mat.wireframe = false;
+-                mat.transparent = !this.torsoVisible;
+-                mat.opacity = this.torsoVisible ? 1.0 : 0.0;
++                if (state.metalness !== undefined) mat.metalness = state.metalness;
++                if (state.roughness !== undefined) mat.roughness = state.roughness;
++                
++                // Emissive Glow
++                if (state.glowIntensity !== undefined && state.glowIntensity > 0) {
++                   const glowColVal = state.glowColor !== undefined ? state.glowColor : '#00ffff';
++                   mat.emissive.set(glowColVal);
++                   mat.emissiveIntensity = state.glowIntensity;
++                } else {
++                   mat.emissive.setHex(0x000000);
++                   mat.emissiveIntensity = 0.0;
++                }
++                
++                // Wireframe Mode
++                if (state.wireframe !== undefined) {
++                   mat.wireframe = state.wireframe > 0.5;
++                }
++                
++                // Hologram Mode (Glassy translucent)
++                if (state.hologram !== undefined) {
++                   const isHolo = state.hologram > 0.5;
++                   mat.transparent = isHolo;
++                   mat.opacity = isHolo ? 0.35 : (this.torsoVisible ? 1.0 : 0.0);
++                   mat.roughness = isHolo ? 0.05 : (state.roughness ?? 0.6);
++                   mat.metalness = isHolo ? 0.95 : (state.metalness ?? 0.1);
++                }
++                
+                 mat.needsUpdate = true;
+              }
+            });
+@@ -1340,6 +1384,5 @@
+       }
+     });
+-
+     for (const [key, value] of Object.entries(state)) {
+       if (typeof value === 'number') {

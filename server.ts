@@ -1,24 +1,98 @@
 import express from "express";
 import cors from "cors";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { Server } from "@colyseus/core";
 import { WebSocketTransport } from "@colyseus/ws-transport";
 import { createServer } from "http";
 import { XyrtaniaRoom } from "./server/rooms/XyrtaniaRoom";
 
+function restoreAssets() {
+  console.log("[Asset Restore] Checking integrity of critical 3D models...");
+  const assetsToRestore = [
+    {
+      glb: "public/assets/character/Xyrtania_Male_Prototype.glb",
+      b64: "backup_assets/Xyrtania_Male_Prototype.b64"
+    },
+    {
+      glb: "public/assets/character/teacher_body_modular.glb",
+      b64: "backup_assets/teacher_body_modular.b64"
+    },
+    {
+      glb: "public/assets/character/customization/teacher_head_style_1.glb",
+      b64: "backup_assets/teacher_head_style_1.b64"
+    }
+  ];
+
+  for (const asset of assetsToRestore) {
+    let needsRestore = false;
+    if (!fs.existsSync(asset.glb)) {
+      console.log(`[Asset Restore] ${asset.glb} does not exist. Restoring...`);
+      needsRestore = true;
+    } else {
+      try {
+        const buffer = fs.readFileSync(asset.glb);
+        if (buffer.length < 12) {
+          needsRestore = true;
+        } else {
+          const magic = buffer.readUInt32LE(0);
+          const version = buffer.readUInt32LE(4);
+          const length = buffer.readUInt32LE(8);
+          if (magic !== 0x46546C67 || length > buffer.length) {
+            console.log(`[Asset Restore] ${asset.glb} is corrupted (magic: ${magic.toString(16)}, header length: ${length}, file length: ${buffer.length}). Restoring...`);
+            needsRestore = true;
+          }
+        }
+      } catch (err) {
+        console.log(`[Asset Restore] Error reading ${asset.glb}:`, err);
+        needsRestore = true;
+      }
+    }
+
+    if (needsRestore) {
+      if (!fs.existsSync(asset.b64)) {
+        console.error(`[Asset Restore] Critical error: backup file ${asset.b64} not found!`);
+        continue;
+      }
+      try {
+        const b64Str = fs.readFileSync(asset.b64, "utf8").trim();
+        const binaryBuffer = Buffer.from(b64Str, "base64");
+        const parentDir = path.dirname(asset.glb);
+        if (!fs.existsSync(parentDir)) {
+          fs.mkdirSync(parentDir, { recursive: true });
+        }
+        fs.writeFileSync(asset.glb, binaryBuffer);
+        console.log(`[Asset Restore] Successfully restored ${asset.glb} (${binaryBuffer.length} bytes)`);
+      } catch (restoreErr) {
+        console.error(`[Asset Restore] Failed to restore ${asset.glb}:`, restoreErr);
+      }
+    } else {
+      console.log(`[Asset Restore] ${asset.glb} is healthy (valid magic and header length).`);
+    }
+  }
+}
+
 async function startServer() {
+  restoreAssets();
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 
   app.use(cors());
   app.use(express.json());
 
-  // Enforce correct Content-Type and Content-Encoding for FBX files to prevent proxy-level compression/corruption
+  // Enforce correct Content-Type and Content-Encoding for 3D model files (FBX, GLB, GLTF) to prevent proxy-level compression/corruption
   app.use((req, res, next) => {
     const cleanPath = req.path || "";
-    if (cleanPath.endsWith('.fbx')) {
-      res.setHeader('Content-Type', 'application/octet-stream');
+    const lowerPath = cleanPath.toLowerCase();
+    if (lowerPath.endsWith('.fbx') || lowerPath.endsWith('.glb') || lowerPath.endsWith('.gltf')) {
+      if (lowerPath.endsWith('.glb')) {
+        res.setHeader('Content-Type', 'model/gltf-binary');
+      } else if (lowerPath.endsWith('.gltf')) {
+        res.setHeader('Content-Type', 'application/json');
+      } else {
+        res.setHeader('Content-Type', 'application/octet-stream');
+      }
       res.setHeader('Content-Encoding', 'identity');
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     }
