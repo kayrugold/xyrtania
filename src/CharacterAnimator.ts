@@ -231,6 +231,44 @@ export class CharacterAnimator {
       });
   }
 
+  private static createProceduralEyeTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+    
+    // Background (Sclera)
+    ctx.fillStyle = '#f8f8f8';
+    ctx.fillRect(0, 0, 256, 256);
+    
+    // Iris
+    ctx.fillStyle = '#1e90ff'; // Dodger Blue
+    ctx.beginPath();
+    ctx.arc(128, 128, 64, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Pupil
+    ctx.fillStyle = '#050505';
+    ctx.beginPath();
+    ctx.arc(128, 128, 28, 0, Math.PI * 2);
+    ctx.fill();
+    
+    // Highlights
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.beginPath();
+    ctx.arc(105, 105, 12, 0, Math.PI * 2);
+    ctx.fill();
+    
+    ctx.beginPath();
+    ctx.arc(140, 140, 6, 0, Math.PI * 2);
+    ctx.fill();
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.anisotropy = 16;
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  }
+
   private createProceduralTeacherHead(): THREE.Group {
     const headGroup = new THREE.Group();
     headGroup.name = 'ProceduralTeacherHead';
@@ -765,8 +803,8 @@ export class CharacterAnimator {
       object.traverse((child: any) => {
         if ((child as any).isMesh) {
           if (!rootMeshName) rootMeshName = child.name;
-          child.castShadow = false;
-          child.receiveShadow = false;
+          child.castShadow = true;
+          child.receiveShadow = true;
           child.frustumCulled = false; // Prevent culling when animated/scaled
           
           if (isCustomTripoModel && child.material) {
@@ -896,6 +934,30 @@ export class CharacterAnimator {
           innerWrapper.position.set(0, this.baseYOffset, 0);
       }
       
+      // Add Procedural Eye Textures if eye bones exist
+      if (this.leftEyeBone && this.rightEyeBone) {
+          const eyeTexture = CharacterAnimator.createProceduralEyeTexture();
+          const eyeMat = new THREE.MeshStandardMaterial({ 
+              map: eyeTexture, 
+              roughness: 0.2, 
+              metalness: 0.1 
+          });
+          const eyeGeo = new THREE.SphereGeometry(0.015, 16, 16);
+          // Standard sphere's UV center (0.5, 0.5) is at +X. We want it facing forward.
+          // Usually Mixamo eye bones face +Y. Let's rotate to face +Y.
+          // Also, +Z is usually up or forward depending on rig. We will just use a generic rotation.
+          eyeGeo.rotateZ(Math.PI / 2); // Faces Y
+          eyeGeo.rotateX(Math.PI / 2); // Faces Z? Let's just do a basic rotation that looks forward for most Mixamo rigs (often Y is forward)
+          
+          const leftEyeMesh = new THREE.Mesh(eyeGeo, eyeMat);
+          leftEyeMesh.name = 'ProceduralEye_L';
+          this.leftEyeBone.add(leftEyeMesh);
+          
+          const rightEyeMesh = new THREE.Mesh(eyeGeo, eyeMat);
+          rightEyeMesh.name = 'ProceduralEye_R';
+          this.rightEyeBone.add(rightEyeMesh);
+      }
+
       if (!foundBone) {
           console.warn("Model has no bones. Rotating to stand up.");
           object.rotation.set(0, 0, 0); 

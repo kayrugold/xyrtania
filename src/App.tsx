@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'; // Trigger file watcher
 import * as THREE from 'three';
-import { Maximize, Palette } from 'lucide-react';
+import { Maximize, Palette, Activity } from 'lucide-react';
 import { WorldGrid } from './WorldGrid';
 import { PlayerState, JumpPhase, resolveAssetUrl } from './types';
 import { CharacterAnimator } from './CharacterAnimator';
@@ -65,12 +65,26 @@ export default function App() {
   const [uploadedCharName, setUploadedCharName] = useState<string | null>(null);
   const [uploadedTreeName, setUploadedTreeName] = useState<string | null>(null);
   const [graphicsQuality, setGraphicsQuality] = useState<'high' | 'medium' | 'low' | 'potato'>('potato');
+  const [shadowsEnabled, setShadowsEnabled] = useState<boolean>(true);
+  const [shadowQuality, setShadowQuality] = useState<'low' | 'medium' | 'high'>('low');
 
   const graphicsQualityRef = useRef(graphicsQuality);
   useEffect(() => {
     graphicsQualityRef.current = graphicsQuality;
     window.dispatchEvent(new Event('resize'));
   }, [graphicsQuality]);
+
+  const shadowsEnabledRef = useRef(shadowsEnabled);
+  useEffect(() => {
+    shadowsEnabledRef.current = shadowsEnabled;
+    window.dispatchEvent(new Event('resize'));
+  }, [shadowsEnabled]);
+
+  const shadowQualityRef = useRef(shadowQuality);
+  useEffect(() => {
+    shadowQualityRef.current = shadowQuality;
+    window.dispatchEvent(new Event('resize'));
+  }, [shadowQuality]);
 
   const localAnimatorRef = useRef<CharacterAnimator | null>(null);
   const hideCharacterRef = useRef(false);
@@ -680,27 +694,78 @@ export default function App() {
 
       // Optimize pixelRatio dynamically to prevent frame drops in fullscreen / high resolution
       const quality = graphicsQualityRef.current;
+      const shEnabled = shadowsEnabledRef.current;
+      const shQuality = shadowQualityRef.current;
       let maxPixelRatio = 1.5;
       
       if (quality === 'high') {
         // High quality: 1.5 max pixel ratio under normal, 1.25 in fullscreen to optimize fill rate
-        maxPixelRatio = document.fullscreenElement ? 1.0 : 1.0;
-        sunLight.castShadow = false;
-        renderer.shadowMap.enabled = false;
+        maxPixelRatio = document.fullscreenElement ? 1.25 : 1.5;
       } else if (quality === 'medium') {
         // Medium quality: 1.0 max pixel ratio (sharp, but much fewer pixels than 1.5/2.0), shadows enabled
         maxPixelRatio = 0.75;
-        sunLight.castShadow = false;
-        renderer.shadowMap.enabled = false;
       } else if (quality === 'low') { // 'low'
         // Low quality: 0.5 max pixel ratio (sub-sampled), shadows disabled completely for peak performance
         maxPixelRatio = 0.5;
-        sunLight.castShadow = false;
-        renderer.shadowMap.enabled = false;
       } else { // 'potato'
         maxPixelRatio = 0.25;
-        sunLight.castShadow = false;
-        renderer.shadowMap.enabled = false;
+      }
+
+      const prevShadowMapEnabled = renderer.shadowMap.enabled;
+      let shadowTypeChanged = false;
+      renderer.shadowMap.enabled = shEnabled;
+      sunLight.castShadow = shEnabled;
+      
+      if (shEnabled) {
+          let newWidth = 512, newHeight = 512;
+          let newType: THREE.ShadowMapType = THREE.PCFShadowMap;
+          let newRadius = 1;
+          
+          if (shQuality === 'high') {
+              newWidth = 2048; newHeight = 2048;
+              newType = THREE.PCFSoftShadowMap;
+              newRadius = 2.5;
+          } else if (shQuality === 'medium') {
+              newWidth = 1024; newHeight = 1024;
+              newType = THREE.PCFSoftShadowMap;
+              newRadius = 1.5;
+          } else {
+              newWidth = 512; newHeight = 512;
+              newType = THREE.PCFShadowMap;
+              newRadius = 1;
+          }
+          
+          if (renderer.shadowMap.type !== newType) {
+              renderer.shadowMap.type = newType;
+              shadowTypeChanged = true;
+          }
+
+          if (sunLight.shadow.radius !== newRadius) {
+              sunLight.shadow.radius = newRadius;
+          }
+          
+          if (sunLight.shadow.mapSize.width !== newWidth || sunLight.shadow.mapSize.height !== newHeight) {
+              sunLight.shadow.mapSize.width = newWidth;
+              sunLight.shadow.mapSize.height = newHeight;
+              if (sunLight.shadow.map) {
+                  sunLight.shadow.map.setSize(newWidth, newHeight);
+              }
+          }
+      }
+      
+      if (prevShadowMapEnabled !== renderer.shadowMap.enabled || shadowTypeChanged) {
+          scene.traverse((child) => {
+              if ((child as THREE.Mesh).isMesh) {
+                  const mat = (child as THREE.Mesh).material;
+                  if (mat) {
+                      if (Array.isArray(mat)) {
+                          mat.forEach(m => m.needsUpdate = true);
+                      } else {
+                          mat.needsUpdate = true;
+                      }
+                  }
+              }
+          });
       }
       
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxPixelRatio));
@@ -1690,15 +1755,8 @@ export default function App() {
         currentCamDist -= speedFactor * 1.25;
       }
       
-      // Calculate a right-offset for a 3/4 over-the-shoulder RPG camera (e.g. Gothic 3)
-      const rightDirection = new THREE.Vector3(
-         Math.cos(cameraYaw),
-         0,
-         -Math.sin(cameraYaw)
-      ).normalize();
-      
-      const shoulderOffset = rightDirection.clone().multiplyScalar(0.7 * heightScale);
-      const actualFocalPoint = focalPoint.clone().add(shoulderOffset);
+      // Center camera directly on the player
+      const actualFocalPoint = focalPoint.clone();
 
       const dynamicOffset = new THREE.Vector3(
         currentCamDist * Math.sin(cameraYaw) * Math.cos(cameraPitch),
@@ -1938,8 +1996,8 @@ export default function App() {
       
       // Update diagnostics
       if (typeof document !== 'undefined') {
-        if (!window.lastDiagUpdate || currentTime - window.lastDiagUpdate > 250) {
-          window.lastDiagUpdate = currentTime;
+        if (!(window as any).lastDiagUpdate || currentTime - (window as any).lastDiagUpdate > 250) {
+          (window as any).lastDiagUpdate = currentTime;
           const diagDrawCalls = document.getElementById('diag-drawcalls');
           const diagTriangles = document.getElementById('diag-triangles');
           const diagCpu = document.getElementById('diag-cpu');
@@ -2067,6 +2125,13 @@ export default function App() {
           title="Customize Character"
         >
           <Palette className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => setShowDiagnostics(!showDiagnostics)}
+          className={`bg-black/60 border ${showDiagnostics ? 'border-cyan-400 text-cyan-300' : 'border-cyan-500/30 text-cyan-400'} p-2 rounded hover:bg-black/80 transition-colors backdrop-blur pointer-events-auto flex items-center justify-center`}
+          title="Toggle Performance Diagnostics"
+        >
+          <Activity className="w-5 h-5" />
         </button>
         <button
           onClick={() => {
@@ -2464,7 +2529,39 @@ export default function App() {
               ))}
             </div>
             <p className="text-[9px] text-cyan-200/50 leading-normal">
-              Adjusts WebGL internal scaling and shadows to maintain 60 FPS on high-DPI displays.
+              Adjusts WebGL internal scaling to maintain 60 FPS on high-DPI displays.
+            </p>
+          </div>
+
+          <div className="border-t border-cyan-500/30 pt-3 flex flex-col gap-2">
+            <label className="text-xs text-cyan-200 font-mono tracking-wide flex justify-between items-center">
+              <span>Shadows</span>
+              <button 
+                onClick={() => setShadowsEnabled(!shadowsEnabled)}
+                className={`text-[10px] font-bold px-2 py-0.5 rounded ${shadowsEnabled ? 'bg-cyan-500 text-black shadow-[0_0_8px_rgba(6,182,212,0.4)]' : 'bg-red-500/20 text-red-400 hover:bg-red-500/40'}`}
+              >
+                {shadowsEnabled ? 'ON' : 'OFF'}
+              </button>
+            </label>
+            {shadowsEnabled && (
+              <div className="grid grid-cols-3 gap-1 bg-black/40 p-1 rounded border border-cyan-500/20">
+                {(['low', 'medium', 'high'] as const).map((q) => (
+                  <button
+                    key={q}
+                    onClick={() => setShadowQuality(q)}
+                    className={`py-1 text-[10px] font-mono uppercase rounded transition-all cursor-pointer ${
+                      shadowQuality === q
+                        ? 'bg-cyan-500 text-black font-bold shadow-[0_0_8px_rgba(6,182,212,0.4)]'
+                        : 'text-cyan-400 hover:bg-cyan-500/10'
+                    }`}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="text-[9px] text-cyan-200/50 leading-normal">
+              Shadows impact performance heavily. Lowering quality or turning off improves framerate.
             </p>
           </div>
         </div>

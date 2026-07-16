@@ -87,8 +87,8 @@ export class WorldGrid {
                   }
                   const clonedMesh = new THREE.Mesh(geom, mat);
 
-                  clonedMesh.castShadow = false; // Turn off shadows for huge fps boost
-                  clonedMesh.receiveShadow = false;
+                  clonedMesh.castShadow = true; // Turn off shadows for huge fps boost
+                  clonedMesh.receiveShadow = true;
                   treeMeshes.push(clonedMesh);
                 }
               });
@@ -364,8 +364,8 @@ export class WorldGrid {
           this.seededRandom(baseSeed, i * 9) * Math.PI,
           0
         );
-        rockMesh.castShadow = false;
-        rockMesh.receiveShadow = false;
+        rockMesh.castShadow = true;
+        rockMesh.receiveShadow = true;
         
         rockMesh.userData = {
           isObstacle: true,
@@ -431,8 +431,8 @@ export class WorldGrid {
                         protoMesh.material,
                         tGroup.length
                     );
-                    instancedTree.castShadow = false;
-                    instancedTree.receiveShadow = false;
+                    instancedTree.castShadow = true;
+                    instancedTree.receiveShadow = true;
                     
                     const dummy = new THREE.Object3D();
                     tGroup.forEach((t: any, i: number) => {
@@ -560,7 +560,7 @@ export class WorldGrid {
   }
 
   public rebuildWorld(): void {
-    this.treePrototypeMesh = null; // Reset mesh to reload properly
+    this.treePrototypes = []; // Reset mesh to reload properly
     this.clearChunks();
   }
 
