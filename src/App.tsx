@@ -47,6 +47,9 @@ export default function App() {
 
   const [editorTool, setEditorTool] = useState<'raise' | 'lower' | 'flatten' | 'grass' | 'dirt' | 'sand' | 'snow'>('raise');
   const [devEditSecret, setDevEditSecret] = useState<string>('');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const isAdminRef = useRef(false);
+  useEffect(() => { isAdminRef.current = isAdmin; }, [isAdmin]);
   const devEditSecretRef = useRef('');
   useEffect(() => { devEditSecretRef.current = devEditSecret; }, [devEditSecret]);
   const isEditorModeRef = useRef(false);
@@ -356,6 +359,9 @@ export default function App() {
     const networkManager = new NetworkManager('xyrtania-world-1', 'main-room');
     networkManagerRef.current = networkManager;
     
+    networkManager.onAdminStatus = (status) => {
+      setIsAdmin(status);
+    };
     networkManager.onTerrainEdit = (edits) => {
       if (worldGridRef.current) {
         worldGridRef.current.applyEdits(edits);
@@ -2532,6 +2538,7 @@ export default function App() {
 
       {/* HUD UI Elements */}
       <div className="absolute top-4 right-4 z-50 flex gap-2 items-center">
+        {(isAdmin || devEditSecret !== '') && (
         <button
           onClick={() => {
               const newMode = !isEditorMode;
@@ -2545,6 +2552,7 @@ export default function App() {
         >
           MAP EDITOR
         </button>
+        )}
         <button
           onClick={() => setShowCustomizer(!showCustomizer)}
           className={`bg-black/60 border ${showCustomizer ? 'border-cyan-400 text-cyan-300' : 'border-cyan-500/30 text-cyan-400'} p-2 rounded hover:bg-black/80 transition-colors backdrop-blur pointer-events-auto flex items-center justify-center`}

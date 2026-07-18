@@ -234,6 +234,7 @@ export class WorldGrid {
                  const factor = Math.min(1, (1 - (dist / radius)) * 1.5);
                  const newH = currentHeight + (targetHeight - currentHeight) * factor;
                  this.heightData.set(key, newH);
+                 edits.push({ vx, vz, h: newH });
                  
                  const chunks = this.getChunksForVertex(vx, vz);
                  for (const c of chunks) activeChunks.add(c);

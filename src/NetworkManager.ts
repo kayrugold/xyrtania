@@ -33,6 +33,7 @@ export class NetworkManager {
   public onPeerAnimationStateChange?: (id: string, animationState: string) => void;
   public onPeerDisplayNameChange?: (id: string, displayName: string) => void;
   public onTerrainEdit?: (edits: any[]) => void;
+  public onAdminStatus?: (isAdmin: boolean) => void;
   
   public onStatusChange?: (status: 'connected' | 'disconnected' | 'reconnecting', roomId?: string) => void;
   public onPeersChange?: (peersCount: number) => void;
@@ -281,6 +282,11 @@ export class NetworkManager {
       room.onMessage("terrain_edit_error", (data: any) => {
         console.error("Terrain edit rejected by server:", data);
         alert("Terrain edit rejected: " + JSON.stringify(data, null, 2));
+      });
+      room.onMessage("admin_status", (data: any) => {
+        if (this.onAdminStatus) {
+            this.onAdminStatus(data.isAdmin);
+        }
       });
       room.onMessage("TERRAIN_EDIT", (edits: any[]) => {
         if (this.onTerrainEdit) {

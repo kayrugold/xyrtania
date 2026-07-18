@@ -26,11 +26,17 @@ export class XyrtaniaState extends Schema {
 }
 
 export class XyrtaniaRoom extends Room<XyrtaniaState> {
+  private adminKeys: string[] = [];
+  private devEditSecret: string = "";
+
   onCreate(options: any) {
     this.setState(new XyrtaniaState());
     
-    const adminKeys = process.env.ADMIN_KEYS ? process.env.ADMIN_KEYS.split(',') : [];
-    const devEditSecret = process.env.DEV_EDIT_SECRET || "dev-secret";
+    this.adminKeys = process.env.ADMIN_KEYS ? process.env.ADMIN_KEYS.split(',') : [];
+    this.devEditSecret = process.env.DEV_EDIT_SECRET || "dev-secret";
+    
+    const adminKeys = this.adminKeys;
+    const devEditSecret = this.devEditSecret;
 
     this.onMessage("move", (client, data) => {
       const player = this.state.players.get(client.sessionId);
@@ -134,6 +140,18 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
     
     this.state.players.set(client.sessionId, player);
     
+    // Send admin status
+    const lowerPlayerId = player.playerId.trim().toLowerCase();
+    const isAdmin = this.adminKeys.some(key => {
+        const lowerKey = key.trim().replace(/^['"]|['"]$/g, '').toLowerCase();
+        if (lowerKey.includes('...')) {
+          const parts = lowerKey.split('...');
+          return lowerPlayerId.startsWith(parts[0]) && lowerPlayerId.endsWith(parts[1]);
+        }
+        return lowerKey === lowerPlayerId;
+    });
+    client.send("admin_status", { isAdmin });
+
     // Send all historical terrain edits to the new player
     if (this.state.terrainEditsLog.size > 0) {
         client.send("TERRAIN_EDIT", Array.from(this.state.terrainEditsLog.values()));
