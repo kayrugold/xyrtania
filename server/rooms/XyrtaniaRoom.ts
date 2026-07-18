@@ -354,7 +354,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
             console.log(`Client ${client.sessionId} successfully reconnected!`);
             return;
         } catch (e) {
-            console.log(`Client ${client.sessionId} failed to reconnect in time.`);
+            // Expected timeout if user fully left
         }
     }
 
