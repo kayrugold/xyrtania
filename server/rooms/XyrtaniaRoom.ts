@@ -65,7 +65,15 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
         }
         return lowerKey === lowerPlayerId;
       });
-      const isDevOverride = data.secret === devEditSecret;
+      const isDevOverride = data.secret && data.secret.trim() === devEditSecret.trim();
+      console.log('TERRAIN_EDIT check:', {
+        playerId: player.playerId,
+        adminKeys,
+        devEditSecret,
+        providedSecret: data.secret,
+        isAdmin,
+        isDevOverride
+      });
 
       if (isAdmin || isDevOverride) {
         // Broadcast the edit to all OTHER clients
@@ -88,6 +96,14 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
         }
       } else {
         console.warn(`Unauthorized terrain edit attempt by ${player.playerId}`);
+        client.send("terrain_edit_error", {
+            playerId: player.playerId,
+            providedSecret: data.secret,
+            expectedSecret: devEditSecret,
+            adminKeys,
+            isAdmin,
+            isDevOverride
+        });
       }
     });
 
@@ -101,7 +117,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
   }
 
   onJoin(client: Client, options: any) {
-    console.log(client.sessionId, "joined!");
+    console.log(client.sessionId, "joined! Player ID:", options.playerId);
     const player = new Player();
     player.id = client.sessionId;
     player.playerId = options.playerId || "";

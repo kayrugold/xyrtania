@@ -278,6 +278,10 @@ export class NetworkManager {
   }
 
   private setupRoomListeners(room: Room) {
+      room.onMessage("terrain_edit_error", (data: any) => {
+        console.error("Terrain edit rejected by server:", data);
+        alert("Terrain edit rejected: " + JSON.stringify(data, null, 2));
+      });
       room.onMessage("TERRAIN_EDIT", (edits: any[]) => {
         if (this.onTerrainEdit) {
           this.onTerrainEdit(edits);
