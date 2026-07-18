@@ -1,3 +1,4 @@
+import { encodeEdits, decodeEdits } from './TerrainCodec';
 import { Client, Room } from 'colyseus.js';
 import { PlayerState } from './types';
 import * as THREE from 'three';
@@ -256,6 +257,9 @@ export class NetworkManager {
       }
 
       if (this.isDisconnected) {
+          try {
+              if (room.connection) room.connection.close();
+          } catch(e) {}
           room.leave();
           this.status = 'disconnected';
           if (this.onStatusChange) this.onStatusChange(this.status);
@@ -282,6 +286,9 @@ export class NetworkManager {
       room.onMessage("terrain_edit_error", (data: any) => {
         console.error("Terrain edit rejected by server:", data);
         alert("Terrain edit rejected: " + JSON.stringify(data, null, 2));
+        if (this.onAdminStatus) {
+            this.onAdminStatus(false);
+        }
       });
       room.onMessage("admin_status", (data: any) => {
         if (this.onAdminStatus) {
@@ -290,6 +297,12 @@ export class NetworkManager {
       });
       room.onMessage("TERRAIN_EDIT", (edits: any[]) => {
         if (this.onTerrainEdit) {
+          this.onTerrainEdit(edits);
+        }
+      });
+      room.onMessage("TERRAIN_EDIT_BIN", (binaryData: any) => {
+        if (this.onTerrainEdit) {
+          const edits = decodeEdits(binaryData);
           this.onTerrainEdit(edits);
         }
       });
@@ -523,6 +536,21 @@ export class NetworkManager {
   private terrainEditBuffer: Map<string, any> = new Map();
   private terrainEditTimeout: any = null;
 
+  public verifyAdminSecret(secret: string) {
+    if (this.room) {
+      if (this.connectionMode === 'colyseus_render') {
+        // Older Render server doesn't support verify_secret message and will crash.
+        // Send a probe TERRAIN_EDIT instead.
+        this.room.send("TERRAIN_EDIT", { secret, edits: [] });
+        if (this.onAdminStatus) {
+            this.onAdminStatus(true);
+        }
+      } else {
+        this.room.send("verify_secret", { secret });
+      }
+    }
+  }
+
   public sendTerrainEdit(secret: string, edits: any[]) {
     if (this.connectionMode === 'p2p') return;
     
@@ -538,6 +566,9 @@ export class NetworkManager {
       this.terrainEditTimeout = setTimeout(() => {
         if (this.room && this.terrainEditBuffer.size > 0) {
           const batchedEdits = Array.from(this.terrainEditBuffer.values());
+          // Send edits as JSON for ease to server, server broadcasts as binary.
+          // Or we can send binary to server too? For now JSON is fine for client->server,
+          // as the payload is small per batch. We keep it as JSON to avoid updating server schema.
           this.room.send("TERRAIN_EDIT", { secret, edits: batchedEdits });
           this.terrainEditBuffer.clear();
         }
@@ -550,6 +581,9 @@ export class NetworkManager {
   public disconnect() {
       this.isDisconnected = true;
       if (this.room) {
+          try {
+              if (this.room.connection) this.room.connection.close();
+          } catch(e) {}
           this.room.leave();
           this.room = undefined;
       }

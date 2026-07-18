@@ -8,6 +8,7 @@ export interface Env {
   // database_name = "xyrtania-characters"
   // database_id = "<uuid>"
   DB: any; // Using `any` type here for standalone compilation without `@cloudflare/workers-types`
+  SERVER_SECRET: string;
 }
 
 export default {
@@ -82,6 +83,42 @@ export default {
           status: 500,
           headers: { "Access-Control-Allow-Origin": "*" }
         });
+      }
+    }
+
+    if (request.method === 'POST' && url.pathname === '/api/terrain/sync') {
+      try {
+        const body = await request.json();
+        const { regionId, data, secret } = body;
+        
+        // Very basic shared secret for server-to-server auth
+        // In production, pass a proper SERVER_SECRET via wrangler.toml env var
+        if (!secret || secret !== (env.SERVER_SECRET || 'dev-secret')) {
+             return new Response(JSON.stringify({ error: 'Unauthorized server access' }), { status: 401 });
+        }
+
+        const stmt = env.DB.prepare(`
+          INSERT INTO terrain_regions (region_id, data, last_updated)
+          VALUES (?1, ?2, CURRENT_TIMESTAMP)
+          ON CONFLICT(region_id) DO UPDATE SET
+            data=excluded.data,
+            last_updated=CURRENT_TIMESTAMP;
+        `);
+        await stmt.bind(regionId, data).run();
+
+        return new Response(JSON.stringify({ success: true }));
+      } catch (error) {
+        return new Response(JSON.stringify({ error: 'Internal server error while syncing terrain' }), { status: 500 });
+      }
+    }
+    
+    if (request.method === 'GET' && url.pathname === '/api/terrain/load') {
+      try {
+        const stmt = env.DB.prepare('SELECT region_id as regionId, data FROM terrain_regions');
+        const { results } = await stmt.all();
+        return new Response(JSON.stringify({ success: true, regions: results || [] }));
+      } catch (error) {
+        return new Response(JSON.stringify({ error: 'Internal server error while loading terrain' }), { status: 500 });
       }
     }
 

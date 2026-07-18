@@ -58,26 +58,54 @@ export default function App() {
   useEffect(() => { editorToolRef.current = editorTool; }, [editorTool]);
   
   const editorCameraTargetRef = useRef(new THREE.Vector3());
-  const [customColor, setCustomColor] = useState<string>('#ffffff');
-  const [customScale, setCustomScale] = useState<number>(1.0);
-  const [customWidth, setCustomWidth] = useState<number>(1.0);
-  const [customHeight, setCustomHeight] = useState<number>(1.0);
-  const [customDepth, setCustomDepth] = useState<number>(1.0);
-  const [customMetalness, setCustomMetalness] = useState<number>(0.0);
-  const [customRoughness, setCustomRoughness] = useState<number>(0.8);
-  const [customHeadScale, setCustomHeadScale] = useState<number>(1.0);
-  const [customLegLength, setCustomLegLength] = useState<number>(1.0);
-  const [customArmLength, setCustomArmLength] = useState<number>(1.0);
-  const [customTorsoThickness, setCustomTorsoThickness] = useState<number>(1.0);
-  const [glowIntensity, setGlowIntensity] = useState<number>(0.0);
-  const [glowColor, setGlowColor] = useState<string>('#00ffff');
-  const [wireframe, setWireframe] = useState<boolean>(false);
-  const [hologram, setHologram] = useState<boolean>(false);
-  const [torsoVisible, setTorsoVisible] = useState<boolean>(true);
-  const [morphTargets, setMorphTargets] = useState<Record<string, number>>({});
-  const [headStyle, setHeadStyle] = useState<number>(0);
-  const [uploadedHeadName, setUploadedHeadName] = useState<string | null>(null);
-  const [uploadedCharName, setUploadedCharName] = useState<string | null>(null);
+  const [customColor, setCustomColor] = useState<string>(() => localStorage.getItem('xy_customColor') || '#ffffff');
+  const [customScale, setCustomScale] = useState<number>(() => parseFloat(localStorage.getItem('xy_customScale') || '1.0'));
+  const [customWidth, setCustomWidth] = useState<number>(() => parseFloat(localStorage.getItem('xy_customWidth') || '1.0'));
+  const [customHeight, setCustomHeight] = useState<number>(() => parseFloat(localStorage.getItem('xy_customHeight') || '1.0'));
+  const [customDepth, setCustomDepth] = useState<number>(() => parseFloat(localStorage.getItem('xy_customDepth') || '1.0'));
+  const [customMetalness, setCustomMetalness] = useState<number>(() => parseFloat(localStorage.getItem('xy_customMetalness') || '0.0'));
+  const [customRoughness, setCustomRoughness] = useState<number>(() => parseFloat(localStorage.getItem('xy_customRoughness') || '0.8'));
+  const [customHeadScale, setCustomHeadScale] = useState<number>(() => parseFloat(localStorage.getItem('xy_customHeadScale') || '1.0'));
+  const [customLegLength, setCustomLegLength] = useState<number>(() => parseFloat(localStorage.getItem('xy_customLegLength') || '1.0'));
+  const [customArmLength, setCustomArmLength] = useState<number>(() => parseFloat(localStorage.getItem('xy_customArmLength') || '1.0'));
+  const [customTorsoThickness, setCustomTorsoThickness] = useState<number>(() => parseFloat(localStorage.getItem('xy_customTorsoThickness') || '1.0'));
+  const [glowIntensity, setGlowIntensity] = useState<number>(() => parseFloat(localStorage.getItem('xy_glowIntensity') || '0.0'));
+  const [glowColor, setGlowColor] = useState<string>(() => localStorage.getItem('xy_glowColor') || '#00ffff');
+  const [wireframe, setWireframe] = useState<boolean>(() => localStorage.getItem('xy_wireframe') === 'true');
+  const [hologram, setHologram] = useState<boolean>(() => localStorage.getItem('xy_hologram') === 'true');
+
+  useEffect(() => {
+    localStorage.setItem('xy_customColor', customColor);
+    localStorage.setItem('xy_customScale', customScale.toString());
+    localStorage.setItem('xy_customWidth', customWidth.toString());
+    localStorage.setItem('xy_customHeight', customHeight.toString());
+    localStorage.setItem('xy_customDepth', customDepth.toString());
+    localStorage.setItem('xy_customMetalness', customMetalness.toString());
+    localStorage.setItem('xy_customRoughness', customRoughness.toString());
+    localStorage.setItem('xy_customHeadScale', customHeadScale.toString());
+    localStorage.setItem('xy_customLegLength', customLegLength.toString());
+    localStorage.setItem('xy_customArmLength', customArmLength.toString());
+    localStorage.setItem('xy_customTorsoThickness', customTorsoThickness.toString());
+    localStorage.setItem('xy_glowIntensity', glowIntensity.toString());
+    localStorage.setItem('xy_glowColor', glowColor);
+    localStorage.setItem('xy_wireframe', wireframe.toString());
+    localStorage.setItem('xy_hologram', hologram.toString());
+  }, [customColor, customScale, customWidth, customHeight, customDepth, customMetalness, customRoughness, customHeadScale, customLegLength, customArmLength, customTorsoThickness, glowIntensity, glowColor, wireframe, hologram]);
+  const [torsoVisible, setTorsoVisible] = useState<boolean>(() => localStorage.getItem('xy_torsoVisible') !== 'false');
+  const [morphTargets, setMorphTargets] = useState<Record<string, number>>(() => JSON.parse(localStorage.getItem('xy_morphTargets') || '{}'));
+  const [headStyle, setHeadStyle] = useState<number>(() => parseInt(localStorage.getItem('xy_headStyle') || '0'));
+  const [uploadedHeadName, setUploadedHeadName] = useState<string | null>(() => localStorage.getItem('xy_uploadedHeadName'));
+  const [uploadedCharName, setUploadedCharName] = useState<string | null>(() => localStorage.getItem('xy_uploadedCharName'));
+
+  useEffect(() => {
+    localStorage.setItem('xy_torsoVisible', torsoVisible.toString());
+    localStorage.setItem('xy_morphTargets', JSON.stringify(morphTargets));
+    localStorage.setItem('xy_headStyle', headStyle.toString());
+    if (uploadedHeadName) localStorage.setItem('xy_uploadedHeadName', uploadedHeadName);
+    else localStorage.removeItem('xy_uploadedHeadName');
+    if (uploadedCharName) localStorage.setItem('xy_uploadedCharName', uploadedCharName);
+    else localStorage.removeItem('xy_uploadedCharName');
+  }, [torsoVisible, morphTargets, headStyle, uploadedHeadName, uploadedCharName]);
   const [uploadedTreeName, setUploadedTreeName] = useState<string | null>(null);
   const [graphicsQuality, setGraphicsQuality] = useState<'high' | 'medium' | 'low' | 'potato'>('potato');
   const [shadowsEnabled, setShadowsEnabled] = useState<boolean>(true);
@@ -121,6 +149,11 @@ export default function App() {
     setConnectionMode(mode);
     if (networkManagerRef.current) {
       networkManagerRef.current.setConnectionMode(mode);
+    }
+    if (worldGridRef.current) {
+      worldGridRef.current.heightData.clear();
+      worldGridRef.current.colorData.clear();
+      worldGridRef.current.clearChunks();
     }
   };
 
@@ -871,6 +904,9 @@ export default function App() {
 
     const keys: { [key: string]: boolean } = {};
     const keyPressHandler = (e: KeyboardEvent) => {
+      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+        return;
+      }
       if (e.key.toLowerCase() === 'p') {
         setHideCharacter(prev => !prev);
       }
@@ -2262,6 +2298,18 @@ export default function App() {
            peer.animator = remAnim;
         }
 
+        // Adjust remote player Y locally if their client is inactive (e.g. background tab)
+        const pFloorH = worldGrid.getGroundHeight(peer.state.position.x, peer.state.position.z);
+        const swimLevel = -0.5 - (remAnim.targetHeight * 0.7 || 1.5);
+        const expectedY = Math.max(pFloorH, swimLevel);
+        const isJumping = peer.state.animationState && (peer.state.animationState.toLowerCase().includes('jump') || peer.state.animationState.toLowerCase().includes('fall'));
+        
+        if (peer.state.position.y < pFloorH - 0.2) {
+            peer.state.position.y = pFloorH;
+        } else if (peer.state.position.y > expectedY + 0.5 && !isJumping) {
+            peer.state.position.y = Math.max(expectedY, peer.state.position.y - dt * 12.0);
+        }
+
         // Interpolate visual positions smoothly
         remAnim.group.position.lerp(peer.state.position, dt * 10);
         
@@ -2466,6 +2514,9 @@ export default function App() {
   
   useEffect(() => {
     const handleDiagKey = (e: KeyboardEvent) => {
+      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+        return;
+      }
       if (e.key === '`' || e.key === '~') {
         setShowDiagnostics(prev => !prev);
       }
@@ -2538,7 +2589,62 @@ export default function App() {
 
       {/* HUD UI Elements */}
       <div className="absolute top-4 right-4 z-50 flex gap-2 items-center">
-        {(isAdmin || devEditSecret !== '') && (
+        {(isAdmin || connectionMode === 'p2p') && (
+        <>
+        <button
+          onClick={() => {
+              if (worldGridRef.current) {
+                  const data = Array.from(worldGridRef.current.heightData.entries()).map(([k, v]) => {
+                      const [x, z] = k.split('_');
+                      const color = worldGridRef.current?.colorData.get(k);
+                      return { vx: parseFloat(x), vz: parseFloat(z), h: v, c: color };
+                  });
+                  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = 'terrain_data.json';
+                  a.click();
+                  URL.revokeObjectURL(url);
+              }
+          }}
+          className="bg-black/60 border border-green-500/30 text-green-400 px-3 py-2 rounded hover:bg-black/80 hover:border-green-400 transition-colors backdrop-blur pointer-events-auto flex items-center justify-center font-mono text-xs tracking-wider"
+          title="Download current terrain modifications"
+        >
+          EXPORT
+        </button>
+        <button
+          onClick={() => {
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = '.json';
+              input.onchange = (e) => {
+                  const file = (e.target as HTMLInputElement).files?.[0];
+                  if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (re) => {
+                          try {
+                              const parsed = JSON.parse(re.target?.result as string);
+                              if (Array.isArray(parsed) && worldGridRef.current) {
+                                  worldGridRef.current.applyEdits(parsed);
+                                  if (networkManagerRef.current) {
+                                      networkManagerRef.current.sendTerrainEdit(devEditSecretRef.current || "", parsed);
+                                  }
+                              }
+                          } catch (err) {
+                              alert("Invalid terrain file");
+                          }
+                      };
+                      reader.readAsText(file);
+                  }
+              };
+              input.click();
+          }}
+          className="bg-black/60 border border-blue-500/30 text-blue-400 px-3 py-2 rounded hover:bg-black/80 hover:border-blue-400 transition-colors backdrop-blur pointer-events-auto flex items-center justify-center font-mono text-xs tracking-wider"
+          title="Upload terrain modifications"
+        >
+          IMPORT
+        </button>
         <button
           onClick={() => {
               const newMode = !isEditorMode;
@@ -2552,6 +2658,7 @@ export default function App() {
         >
           MAP EDITOR
         </button>
+        </>
         )}
         <button
           onClick={() => setShowCustomizer(!showCustomizer)}
@@ -3048,6 +3155,27 @@ export default function App() {
       {showDiagnostics && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/80 backdrop-blur border border-cyan-500/50 p-4 rounded text-cyan-400 font-mono text-[10px] z-[90] min-w-[200px] pointer-events-none">
           <h3 className="text-center font-bold mb-2 border-b border-cyan-500/30 pb-1">DIAGNOSTICS</h3>
+          {!isAdmin && (
+            <div className="flex flex-col gap-2 mb-2 border-b border-cyan-500/30 pb-2 pointer-events-auto">
+              <label className="text-cyan-300 font-mono text-xs">Admin Override Secret</label>
+              <input 
+                type="password" 
+                value={devEditSecret}
+                onChange={(e) => setDevEditSecret(e.target.value)}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === 'Enter') {
+                    if (networkManagerRef.current) {
+                      networkManagerRef.current.verifyAdminSecret(devEditSecret);
+                    }
+                  }
+                }}
+                onKeyUp={(e) => e.stopPropagation()}
+                placeholder="Enter secret (Press Enter)..."
+                className="bg-gray-900 border border-cyan-500/50 rounded px-2 py-1 text-xs text-cyan-400 w-full outline-none focus:border-cyan-400 pointer-events-auto"
+              />
+            </div>
+          )}
           <div className="flex justify-between"><span>FPS:</span><span>{fps.toFixed(1)}</span></div>
           <div className="flex justify-between"><span>Pos:</span><span>X:{px.toFixed(1)} Z:{pz.toFixed(1)}</span></div>
           <div className="flex justify-between"><span>Chunk:</span><span>{chunkCx}, {chunkCz}</span></div>

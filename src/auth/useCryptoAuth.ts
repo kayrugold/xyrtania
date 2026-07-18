@@ -31,6 +31,13 @@ export function useCryptoAuth() {
              setDisplayName(res.character.displayName);
              localStorage.setItem('xyrtania_display_name', res.character.displayName);
              localStorage.setItem('xyrtania_setup_complete', 'true');
+             
+             // Restore customization if present
+             if (res.character.customColor) localStorage.setItem('xy_customColor', res.character.customColor);
+             if (res.character.customScale) localStorage.setItem('xy_customScale', res.character.customScale);
+             if (res.character.torsoVisible) localStorage.setItem('xy_torsoVisible', res.character.torsoVisible);
+             if (res.character.morphTargets) localStorage.setItem('xy_morphTargets', res.character.morphTargets);
+             if (res.character.headStyle) localStorage.setItem('xy_headStyle', res.character.headStyle);
           }
         } catch (e) {
           console.warn('Failed to fetch character data:', e);
@@ -62,6 +69,12 @@ export function useCryptoAuth() {
           setDisplayName(res.character.displayName);
           localStorage.setItem('xyrtania_display_name', res.character.displayName);
           localStorage.setItem('xyrtania_setup_complete', 'true');
+          
+          if (res.character.customColor) localStorage.setItem('xy_customColor', res.character.customColor);
+          if (res.character.customScale) localStorage.setItem('xy_customScale', res.character.customScale);
+          if (res.character.torsoVisible) localStorage.setItem('xy_torsoVisible', res.character.torsoVisible);
+          if (res.character.morphTargets) localStorage.setItem('xy_morphTargets', res.character.morphTargets);
+          if (res.character.headStyle) localStorage.setItem('xy_headStyle', res.character.headStyle);
         }
       } catch(e) {
         console.warn('Failed to fetch recovered character', e);
@@ -83,6 +96,14 @@ export function useCryptoAuth() {
 
   const updateCharacter = async (stats: any) => {
     if (!session) return;
+    
+    // Inject customization into stats payload for Cloudflare
+    stats.customColor = localStorage.getItem('xy_customColor');
+    stats.customScale = localStorage.getItem('xy_customScale');
+    stats.torsoVisible = localStorage.getItem('xy_torsoVisible');
+    stats.morphTargets = localStorage.getItem('xy_morphTargets');
+    stats.headStyle = localStorage.getItem('xy_headStyle');
+
     
     // Auto-update display name if passed
     if (stats.displayName) {
