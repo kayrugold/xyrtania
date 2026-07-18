@@ -30,6 +30,7 @@ export const AccountUI: React.FC<AccountUIProps> = ({
   
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [hasCopied, setHasCopied] = useState(false);
+  const [hasCopiedId, setHasCopiedId] = useState(false);
   const [hasConfirmed, setHasConfirmed] = useState(false);
   const [isSetupComplete, setIsSetupComplete] = useState(() => {
     return localStorage.getItem('xyrtania_setup_complete') === 'true';
@@ -76,6 +77,12 @@ export const AccountUI: React.FC<AccountUIProps> = ({
   const copyToClipboard = () => {
     navigator.clipboard.writeText(session.mnemonic);
     setHasCopied(true);
+  };
+
+  const copyIdToClipboard = () => {
+    navigator.clipboard.writeText(session.playerId);
+    setHasCopiedId(true);
+    setTimeout(() => setHasCopiedId(false), 2000);
   };
 
   const handleSyncAndStart = async () => {
@@ -133,9 +140,18 @@ export const AccountUI: React.FC<AccountUIProps> = ({
           
           <div className="mb-2 sm:mb-4">
             <p className="text-gray-400 text-xs mb-1">Player ID (Public):</p>
-            <p className="truncate text-gray-200 select-all bg-gray-900 p-1 rounded font-mono text-[11px]" title={session.playerId}>
-              {session.playerId.substring(0, 14)}...{session.playerId.slice(-10)}
-            </p>
+            <div className="flex gap-2 items-center">
+              <p className="flex-1 truncate text-gray-200 select-all bg-gray-900 p-1 rounded font-mono text-[11px]" title={session.playerId}>
+                {session.playerId.substring(0, 14)}...{session.playerId.slice(-10)}
+              </p>
+              <button 
+                onClick={copyIdToClipboard}
+                className="bg-gray-800 hover:bg-gray-700 p-1 rounded text-gray-400 hover:text-white transition-colors"
+                title="Copy full ID"
+              >
+                {hasCopiedId ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+              </button>
+            </div>
           </div>
           
           <div className="mb-2 sm:mb-4 relative">

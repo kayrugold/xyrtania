@@ -43,6 +43,15 @@ export default function App() {
   const [peerNames, setPeerNames] = useState<string[]>([]);
   
   const [showCustomizer, setShowCustomizer] = useState(false);
+  const [isEditorMode, setIsEditorMode] = useState(false);
+
+  const [editorTool, setEditorTool] = useState<'raise' | 'lower' | 'flatten' | 'grass' | 'dirt' | 'sand' | 'snow'>('raise');
+  const isEditorModeRef = useRef(false);
+  useEffect(() => { isEditorModeRef.current = isEditorMode; }, [isEditorMode]);
+  const editorToolRef = useRef(editorTool);
+  useEffect(() => { editorToolRef.current = editorTool; }, [editorTool]);
+  
+  const editorCameraTargetRef = useRef(new THREE.Vector3());
   const [customColor, setCustomColor] = useState<string>('#ffffff');
   const [customScale, setCustomScale] = useState<number>(1.0);
   const [customWidth, setCustomWidth] = useState<number>(1.0);
@@ -255,6 +264,7 @@ export default function App() {
     sunLight.shadow.camera.bottom = -sCamDist;
     sunLight.shadow.bias = -0.0005;
     scene.add(sunLight);
+    scene.add(sunLight.target);
 
     const hemisphereLight = new THREE.HemisphereLight(0x0e172c, 0x050508, 0.45);
     scene.add(hemisphereLight);
@@ -675,6 +685,37 @@ export default function App() {
     fullscreenButton.add(bracketGroup);
     hudElementsGroup.add(fullscreenButton);
 
+    // (G) FPV BUTTON
+    const fpvButton = new THREE.Group();
+    fpvButton.name = 'btn_fpv';
+    
+    const fpvOuter = new THREE.Mesh(new THREE.RingGeometry(42, 48, 32), hudMaterials.gold);
+    fpvOuter.position.z = 1;
+    fpvButton.add(fpvOuter);
+
+    const fpvInner = new THREE.Mesh(new THREE.CircleGeometry(44, 32), hudMaterials.darkGrey);
+    fpvInner.position.z = 0;
+    fpvButton.add(fpvInner);
+
+    const fpvHitArea = new THREE.Mesh(
+      new THREE.CircleGeometry(75, 16),
+      new THREE.MeshBasicMaterial({ depthTest: false, transparent: true, opacity: 0 })
+    );
+    fpvHitArea.position.z = -1;
+    fpvButton.add(fpvHitArea);
+
+    const eyeOuter = new THREE.Mesh(new THREE.RingGeometry(12, 16, 32), hudMaterials.gold);
+    eyeOuter.position.z = 2;
+    eyeOuter.scale.set(1.5, 1.0, 1.0);
+    fpvButton.add(eyeOuter);
+    
+    const eyePupil = new THREE.Mesh(new THREE.CircleGeometry(6, 16), hudMaterials.gold);
+    eyePupil.position.z = 2;
+    fpvButton.add(eyePupil);
+
+    hudElementsGroup.add(fpvButton);
+
+
 
     // --- RE-ENABLE FULL RICH HUD PARTS FOR INTUITIVE USER CONTROLS ---
     healthContainer.visible = true;
@@ -786,6 +827,8 @@ export default function App() {
       
       // Make fullscreen a tiny button at the top right
       fullscreenButton.position.set(w / 2 - 35, h / 2 - 35, 0);
+      fpvButton.position.set(w / 2 - 35, h / 2 - 110, 0);
+      fpvButton.scale.set(0.42, 0.42, 0.42);
       fullscreenButton.scale.set(0.42, 0.42, 0.42);
       
       noticePlate.visible = false;
@@ -799,11 +842,21 @@ export default function App() {
     let currentStamina = 100;
     
     let isTouchMode = false;
+    let isFirstPerson = false;
 
     const keys: { [key: string]: boolean } = {};
     const keyPressHandler = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() === 'p') {
         setHideCharacter(prev => !prev);
+      }
+      if (e.key.toLowerCase() === 'm') {
+        setIsEditorMode(prev => {
+           const newMode = !prev;
+           if (newMode && document.pointerLockElement) {
+               document.exitPointerLock();
+           }
+           return newMode;
+        });
       }
       isTouchMode = false; // keyboard input means we probably aren't relying purely on touch HUD
       
@@ -822,6 +875,10 @@ export default function App() {
 
       const k = e.key.toLowerCase();
       
+      if (k === 'v') {
+        isFirstPerson = !isFirstPerson;
+      }
+
       if (k === 'h') {
           switchHeadRef.current();
       }
@@ -894,6 +951,8 @@ export default function App() {
     let moveTouchId: number | null = null;
     let jumpActive = false;
     let jumpTouchId: number | null = null;
+    let wasInEditorMode = false;
+    let editorCameraYaw = 0;
     let moveStartX = 0;
     let moveStartY = 0;
     let moveCurrentX = 0;
@@ -911,7 +970,54 @@ export default function App() {
     let cameraPitch = 0.2;
     const baseCameraDistance = 4.2;
 
+
+    const applyEditorTool = (clientX: number, clientY: number) => {
+        if (!isEditorModeRef.current || !worldGrid) return;
+        
+        const mouse = new THREE.Vector2();
+        mouse.x = (clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+        
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, camera);
+        
+        
+        // Let's raycast against the scene children that start with chunk_
+        const chunkMeshes = scene.children.filter(c => c.name.startsWith('chunk_')).map(c => c.children[0]);
+        
+        const intersects = raycaster.intersectObjects(chunkMeshes, false);
+        if (intersects.length > 0) {
+            const hit = intersects[0];
+            const point = hit.point;
+            
+            const tool = editorToolRef.current;
+            if (tool === 'raise') {
+                worldGrid.setHeight(point.x, point.z, 0.1, 8);
+            } else if (tool === 'lower') {
+                worldGrid.setHeight(point.x, point.z, -0.1, 8);
+            } else if (tool === 'flatten') {
+                // To flatten we would need to read current height and lerp towards it, but for simplicity:
+                worldGrid.flattenArea(point.x, point.z, 8);
+            } else {
+                let color = 0x8ab07d; // grass
+                if (tool === 'dirt') color = 0x7c5a3a;
+                if (tool === 'sand') color = 0xeedd82;
+                if (tool === 'snow') color = 0xffffff;
+                worldGrid.setColor(point.x, point.z, color, 8);
+            }
+        }
+    };
+
+    let editorDragActive = false;
+    let editorPanActive = false;
+    let editorMouseX = 0;
+    let editorMouseY = 0;
+    let editorCameraZoom = 40;
     const handlePointerDown = (clientX: number, clientY: number, touchId: number | null) => {
+      editorMouseX = clientX;
+      editorMouseY = clientY;
+      if (!isEditorModeRef.current) wasInEditorMode = false;
+
       // 1. Raycast into flat Hud Scene to verify circular buttons hits
       const raycaster = new THREE.Raycaster();
       const mouse = new THREE.Vector2();
@@ -944,6 +1050,12 @@ export default function App() {
             buttonHit = true;
             break;
           }
+          
+          if (parent.name === 'btn_fpv') {
+            isFirstPerson = !isFirstPerson;
+            buttonHit = true;
+            break;
+          }
           if (parent.name === 'btn_fullscreen') {
             toggleFullscreen();
             buttonHit = true;
@@ -957,6 +1069,16 @@ export default function App() {
       // 2. If no button is hit, use split-screen inputs (left side for steer, right side for camera orbit look)
       if (!buttonHit) {
         const isLeftHalf = clientX < window.innerWidth / 2;
+        
+        if (isEditorModeRef.current) {
+           if (isTouchMode && isLeftHalf) {
+              // let the left half be the joystick for panning
+           } else {
+              editorDragActive = true;
+              return;
+           }
+        }
+
         if (isLeftHalf) {
           moveActive = true;
           moveTouchId = touchId;
@@ -996,6 +1118,12 @@ export default function App() {
     };
 
     const handlePointerMove = (clientX: number, clientY: number, touchId: number | null) => {
+      editorMouseX = clientX;
+      editorMouseY = clientY;
+      if (isEditorModeRef.current && editorDragActive) {
+        return;
+      }
+
       if (moveActive && moveTouchId === touchId) {
         moveCurrentX = clientX;
         moveCurrentY = clientY;
@@ -1027,6 +1155,8 @@ export default function App() {
     };
 
     const handlePointerUp = (touchId: number | null) => {
+      editorDragActive = false;
+
       if (touchId === null) {
         moveActive = false;
         moveTouchId = null;
@@ -1067,29 +1197,66 @@ export default function App() {
     
     const onMouseDown = (e: MouseEvent) => {
       isTouchMode = false;
+      if (isEditorModeRef.current) {
+        if (e.button === 1 || e.button === 2) {
+           editorPanActive = true;
+        } else {
+           handlePointerDown(e.clientX, e.clientY, null);
+        }
+        return;
+      }
       if (document.pointerLockElement !== el) {
         el.requestPointerLock().catch(() => {});
       }
     };
     const onMouseMove = (e: MouseEvent) => {
       isTouchMode = false;
+      if (isEditorModeRef.current) {
+        if (editorPanActive) {
+           const mx = e.movementX || 0;
+           const my = e.movementY || 0;
+           const panSpeed = editorCameraZoom * 0.003;
+           editorCameraTargetRef.current.x -= mx * panSpeed;
+           editorCameraTargetRef.current.z -= my * panSpeed;
+        } else {
+           handlePointerMove(e.clientX, e.clientY, null);
+        }
+        return;
+      }
       if (document.pointerLockElement === el) {
-        cameraYaw -= e.movementX * 0.008;
-        cameraPitch = Math.max(-1.5, Math.min(1.4, cameraPitch + e.movementY * 0.006));
+        const mx1 = e.movementX || 0; const my1 = e.movementY || 0;
+        cameraYaw -= mx1 * 0.008;
+        cameraPitch = Math.max(-1.5, Math.min(1.4, cameraPitch + my1 * 0.006));
       } else if (e.buttons > 0) {
         // Fallback for iframe where pointer lock might be blocked
-        cameraYaw -= e.movementX * 0.008;
-        cameraPitch = Math.max(-1.5, Math.min(1.4, cameraPitch + e.movementY * 0.006));
+        const mx2 = e.movementX || 0; const my2 = e.movementY || 0;
+        cameraYaw -= mx2 * 0.008;
+        cameraPitch = Math.max(-1.5, Math.min(1.4, cameraPitch + my2 * 0.006));
       }
     };
-    const onWindowMouseUp = () => {
+    const onWindowMouseUp = (e: MouseEvent) => {
       isTouchMode = false;
+      editorPanActive = false;
       handlePointerUp(null);
     };
+
+    let lastTouchDist = 0;
+    let lastTouchCenter = { x: 0, y: 0 };
 
     const onTouchStart = (e: TouchEvent) => {
       isTouchMode = true;
       e.preventDefault(); // Stop mobile scrolling/pinch effects on WebGL frame canvas
+      
+      if (isEditorModeRef.current && e.touches.length >= 2) {
+          editorPanActive = true;
+          editorDragActive = false;
+          const t1 = e.touches[0];
+          const t2 = e.touches[1];
+          lastTouchDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+          lastTouchCenter = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
+          return;
+      }
+      
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
         handlePointerDown(t.clientX, t.clientY, t.identifier);
@@ -1097,22 +1264,67 @@ export default function App() {
     };
     const onTouchMove = (e: TouchEvent) => {
       e.preventDefault();
+      
+      if (isEditorModeRef.current && e.touches.length >= 2) {
+          const t1 = e.touches[0];
+          const t2 = e.touches[1];
+          const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+          const center = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
+          
+          // Zoom
+          const zoomDiff = lastTouchDist - dist;
+          editorCameraZoom = Math.max(10, Math.min(200, editorCameraZoom + zoomDiff * 0.5));
+          lastTouchDist = dist;
+          
+          // Pan
+          const dx = center.x - lastTouchCenter.x;
+          const dy = center.y - lastTouchCenter.y;
+          const panSpeed = editorCameraZoom * 0.003;
+          editorCameraTargetRef.current.x -= dx * panSpeed;
+          editorCameraTargetRef.current.z -= dy * panSpeed;
+          lastTouchCenter = center;
+          
+          return;
+      }
+      
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
         handlePointerMove(t.clientX, t.clientY, t.identifier);
       }
     };
     const onTouchEnd = (e: TouchEvent) => {
+      if (isEditorModeRef.current) {
+         if (e.touches.length < 2) {
+             editorPanActive = false;
+         }
+         if (e.touches.length === 0) {
+             editorDragActive = false;
+         }
+      }
+      
       for (let i = 0; i < e.changedTouches.length; i++) {
         const t = e.changedTouches[i];
         handlePointerUp(t.identifier);
       }
     };
 
+    const onContextMenu = (e: MouseEvent) => {
+        if (isEditorModeRef.current) {
+            e.preventDefault();
+        }
+    };
+    el.addEventListener('contextmenu', onContextMenu);
     el.addEventListener('mousedown', onMouseDown);
     el.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onWindowMouseUp);
 
+    const onWheel = (e: WheelEvent) => {
+        if (isEditorModeRef.current) {
+            editorCameraZoom = Math.max(10, Math.min(200, editorCameraZoom + e.deltaY * 0.05));
+        }
+    };
+    el.addEventListener('wheel', onWheel, { passive: true });
+    
     el.addEventListener('touchstart', onTouchStart, { passive: false });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
     el.addEventListener('touchend', onTouchEnd, { passive: false });
@@ -1163,10 +1375,13 @@ export default function App() {
       crouchButton.visible = isTouchMode;
       proneButton.visible = isTouchMode;
       fullscreenButton.visible = isTouchMode;
+      fpvButton.visible = isTouchMode;
 
       // Keyboard camera turning
-      if (keys['q']) cameraYaw += 3.5 * dt;
-      if (keys['e']) cameraYaw -= 3.5 * dt;
+      if (!isEditorModeRef.current) {
+          if (keys['q']) cameraYaw += 3.5 * dt;
+          if (keys['e']) cameraYaw -= 3.5 * dt;
+      }
 
       // Gradual decay of HUD click scale pulses
       jumpButton.scale.lerp(new THREE.Vector3(1, 1, 1), dt * 10);
@@ -1180,6 +1395,69 @@ export default function App() {
       if (keys['s'] || keys['arrowdown']) targetKeyboardZ += 1;
       if (keys['a'] || keys['arrowleft']) targetKeyboardX -= 1;
       if (keys['d'] || keys['arrowright']) targetKeyboardX += 1;
+
+      if (isEditorModeRef.current) {
+          if (!wasInEditorMode) {
+              editorCameraTargetRef.current.copy(state.position);
+              editorCameraYaw = cameraYaw;
+              wasInEditorMode = true;
+              
+              // Snap camera immediately
+              const offset = new THREE.Vector3(
+                  Math.sin(editorCameraYaw) * editorCameraZoom,
+                  editorCameraZoom * 1.25,
+                  Math.cos(editorCameraYaw) * editorCameraZoom
+              );
+              camera.position.copy(editorCameraTargetRef.current.clone().add(offset));
+              camera.lookAt(editorCameraTargetRef.current);
+          }
+          
+          if (editorDragActive) {
+              applyEditorTool(editorMouseX, editorMouseY);
+          }
+          
+          // Rotate editor camera
+          if (keys['q']) editorCameraYaw += 3.5 * dt;
+          if (keys['e']) editorCameraYaw -= 3.5 * dt;
+          
+          // Pan camera
+          const panSpeed = 60 * dt;
+          const camForward = new THREE.Vector3(-Math.sin(editorCameraYaw), 0, -Math.cos(editorCameraYaw)).normalize();
+          const camRight = new THREE.Vector3(Math.cos(editorCameraYaw), 0, -Math.sin(editorCameraYaw)).normalize();
+          
+          const panDir = camForward.multiplyScalar(-targetKeyboardZ).add(camRight.multiplyScalar(targetKeyboardX));
+          editorCameraTargetRef.current.add(panDir.multiplyScalar(panSpeed));
+          
+          // Smooth camera to target
+          const offset = new THREE.Vector3(
+              Math.sin(editorCameraYaw) * editorCameraZoom,
+              editorCameraZoom * 1.25,
+              Math.cos(editorCameraYaw) * editorCameraZoom
+          );
+          const camTargetPos = editorCameraTargetRef.current.clone().add(offset);
+          camera.position.lerp(camTargetPos, dt * 5);
+          camera.lookAt(editorCameraTargetRef.current);
+          
+          // Update chunks based on editor camera target
+          worldGrid.update(editorCameraTargetRef.current);
+          
+          // Keep directional light and its shadow camera tracking the editor camera
+          sunLight.position.copy(editorCameraTargetRef.current).add(new THREE.Vector3(35, 60, 25));
+          sunLight.target.position.copy(editorCameraTargetRef.current);
+          sunLight.target.updateMatrixWorld();
+          
+          // Render early and skip player physics updates
+          renderer.clear();
+          renderer.render(scene, camera);
+          
+          if (showHud) {
+            renderer.clearDepth();
+            renderer.render(hudScene, hudCamera);
+          }
+          return;
+      }
+      wasInEditorMode = false;
+
 
       let gamepadJump = false;
       let gamepadCrouch = false;
@@ -1305,6 +1583,10 @@ export default function App() {
       if (Math.abs(smoothedKeyboardX) > 0.01) moveVec.x = smoothedKeyboardX;
       if (Math.abs(smoothedKeyboardZ) > 0.01) moveVec.z = smoothedKeyboardZ;
 
+      const isSwimmingNow = (state as any).isSwimming || false;
+      const isCrouchingNow = state.isCrouching || false;
+      const isProneNow = state.isProne || false;
+      
       // Steer via touch movement vector (Split Screen Joystick style)
       if (moveActive) {
         const screenDx = moveCurrentX - moveStartX;
@@ -1317,7 +1599,22 @@ export default function App() {
           
           // Project relative to camera forward vector
           const camForward = new THREE.Vector3(-Math.sin(cameraYaw), 0, -Math.cos(cameraYaw)).normalize();
-        const camRight = new THREE.Vector3(Math.cos(cameraYaw), 0, -Math.sin(cameraYaw)).normalize();
+          if (isSwimmingNow) {
+              camForward.set(
+                -Math.sin(cameraYaw) * Math.cos(cameraPitch),
+                -Math.sin(cameraPitch),
+                -Math.cos(cameraYaw) * Math.cos(cameraPitch)
+              ).normalize();
+              
+              const waterSurfaceY = -0.5;
+              const swimY1 = waterSurfaceY - (animator ? animator.targetHeight * 0.7 : 1.4);
+              const isNearSurface = state.position.y >= swimY1 - 0.1;
+              if (isNearSurface && camForward.y < 0 && camForward.y > -0.4) {
+                  camForward.y = 0;
+                  camForward.normalize();
+              }
+          }
+          const camRight = new THREE.Vector3(Math.cos(cameraYaw), 0, -Math.sin(cameraYaw)).normalize();
 
           // Mix vectors scaled by cam orientation
           const touchDir = camForward.multiplyScalar(-Math.cos(screenAngle)).add(camRight.multiplyScalar(Math.sin(screenAngle)));
@@ -1333,6 +1630,23 @@ export default function App() {
         moveVec.normalize();
         
         const camForward = new THREE.Vector3(-Math.sin(cameraYaw), 0, -Math.cos(cameraYaw)).normalize();
+        if (isSwimmingNow) {
+            camForward.set(
+              -Math.sin(cameraYaw) * Math.cos(cameraPitch),
+              -Math.sin(cameraPitch),
+              -Math.cos(cameraYaw) * Math.cos(cameraPitch)
+            ).normalize();
+            
+            // Oblivion-style surface swimming: if near surface and not looking steeply down, keep forward horizontal
+            const waterSurfaceY = -0.5;
+            const swimY1 = waterSurfaceY - (animator ? animator.targetHeight * 0.7 : 1.4);
+            const isNearSurface = state.position.y >= swimY1 - 0.1;
+            if (isNearSurface && camForward.y < 0 && camForward.y > -0.4) {
+                camForward.y = 0;
+                camForward.normalize();
+            }
+        }
+        
         const camRight = new THREE.Vector3(Math.cos(cameraYaw), 0, -Math.sin(cameraYaw)).normalize();
 
         // moveVec.z is -1 for forward, moveVec.x is -1 for left
@@ -1351,9 +1665,6 @@ export default function App() {
 
       // We want walk -> jog -> run, so we use a low acceleration factor when running
       // so the player naturally transitions through the animation thresholds.
-      const isSwimmingNow = (state as any).isSwimming || false;
-      const isCrouchingNow = state.isCrouching || false;
-      const isProneNow = state.isProne || false;
       
       let baseSpeed = 18;
       if (isSwimmingNow) baseSpeed = 8;
@@ -1405,7 +1716,7 @@ export default function App() {
       }
 
       const waterLevel = -0.5;
-      const waterSurfaceY = -2.0;
+      const waterSurfaceY = -0.5;
 
       // 1. Calculate next horizontal and vertical
       let nextY = state.position.y;
@@ -1434,8 +1745,9 @@ export default function App() {
         nextY += state.verticalVelocity * dt;
         
         // Surface swimming barrier clamp
-        if (nextY > waterSurfaceY) {
-            nextY = waterSurfaceY;
+        const swimY1 = waterSurfaceY - animator.targetHeight * 0.7;
+        if (nextY > swimY1) {
+            nextY = swimY1;
             if (state.verticalVelocity > 0) {
                 state.verticalVelocity = 0;
                 state.velocity.y = 0;
@@ -1443,7 +1755,7 @@ export default function App() {
         }
 
         // To jump out of water, wait until at surface and press space to breach
-        if (nextY >= waterSurfaceY - 0.1 && (keys[' '] || jumpActive || gamepadJump) && state.jumpPhase === JumpPhase.IDLE) {
+        if (nextY >= swimY1 - 0.1 && (keys[' '] || jumpActive || gamepadJump) && state.jumpPhase === JumpPhase.IDLE) {
             state.jumpPhase = JumpPhase.PREP;
             state.jumpProgress = 0;
         }
@@ -1492,6 +1804,32 @@ export default function App() {
       const activeChunks = worldGrid.getActiveChunks();
 
       // --- HORIZONTAL COLLISION DETECTION ---
+      // Check terrain horizontal collision
+      let currentFloorH = worldGrid.getGroundHeight(state.position.x, state.position.z);
+      if (currentFloorH > nextY + 0.6) {
+          // The terrain ahead is too steep to walk up, push back!
+          // We need to find the slope direction to slide along it
+          const step = 0.5;
+          const hX1 = worldGrid.getGroundHeight(state.position.x + step, state.position.z);
+          const hX0 = worldGrid.getGroundHeight(state.position.x - step, state.position.z);
+          const hZ1 = worldGrid.getGroundHeight(state.position.x, state.position.z + step);
+          const hZ0 = worldGrid.getGroundHeight(state.position.x, state.position.z - step);
+          
+          const gradX = (hX1 - hX0) / (2 * step);
+          const gradZ = (hZ1 - hZ0) / (2 * step);
+          
+          const gradLen = Math.sqrt(gradX * gradX + gradZ * gradZ);
+          if (gradLen > 0.01) {
+              const pushX = (gradX / gradLen);
+              const pushZ = (gradZ / gradLen);
+              // Push them back out of the steep slope
+              state.position.x -= pushX * state.speed * dt * 1.5;
+              state.position.z -= pushZ * state.speed * dt * 1.5;
+              // Re-evaluate floor after push
+              currentFloorH = worldGrid.getGroundHeight(state.position.x, state.position.z);
+          }
+      }
+
       for (const chunk of activeChunks.values()) {
         for (const object of chunk.clutterMeshes) {
           if (object.userData.isObstacle === false) continue; // Skip non-obstacles
@@ -1606,13 +1944,13 @@ export default function App() {
            state.verticalVelocity = 0;
            state.isGrounded = true;
            state.jumpPhase = state.speed > 0.1 ? JumpPhase.RUNNING : JumpPhase.IDLE;
-        } else if (nextY <= waterSurfaceY && floorH < waterSurfaceY && !isSwimmingNow) {
+        } else if (nextY <= waterSurfaceY - animator.targetHeight * 0.7 && floorH < waterSurfaceY - animator.targetHeight * 0.7 && !isSwimmingNow) {
            // We fell into the water, dampen vertical velocity but do not snap to water level
            state.verticalVelocity *= 0.5;
         }
       } else if (state.isGrounded) {
          // If walking off an edge or swimming upwards from the floor:
-         if (nextY > floorH + 0.8) {
+         if (nextY > floorH + 0.8 || (isSwimmingNow && state.verticalVelocity > 0.1)) {
              // We are falling or swimming up!
              state.isGrounded = false;
              if (!isSwimmingNow) {
@@ -1620,12 +1958,19 @@ export default function App() {
              }
          } else {
              nextY = floorH;
+             if (isSwimmingNow && state.verticalVelocity < 0) {
+                 state.verticalVelocity = 0;
+             }
          }
       }
       state.position.y = nextY;
 
       // Check if we are swimming 
-      (state as any).isSwimming = state.position.y <= waterSurfaceY + 0.1 && worldGrid.getGroundHeight(state.position.x, state.position.z) < waterSurfaceY;
+      const swimY2 = waterSurfaceY - animator.targetHeight * 0.7;
+      const isActuallyJumpingOut = state.jumpPhase === JumpPhase.LAUNCH || state.jumpPhase === JumpPhase.PREP || state.jumpPhase === JumpPhase.APEX;
+      if (!isActuallyJumpingOut || state.verticalVelocity <= 0) {
+          (state as any).isSwimming = state.position.y <= swimY2 + 0.1 && worldGrid.getGroundHeight(state.position.x, state.position.z) < swimY2;
+      }
 
       if ((state as any).isSwimming) {
           state.wetness = 1.0;
@@ -1637,7 +1982,7 @@ export default function App() {
       playerRootGroup.position.copy(state.position);
 
       // Add gentle bobbing when treading water at the surface
-      if ((state as any).isSwimming && state.position.y >= waterSurfaceY - 0.05) {
+      if ((state as any).isSwimming && state.position.y >= swimY2 - 0.05) {
           playerRootGroup.position.y += Math.sin(globalTime * 3) * 0.08;
           
           if (Math.random() < 0.1 && state.speed > 0.5) {
@@ -1744,39 +2089,70 @@ export default function App() {
 
       const focalPoint = state.position.clone().add(new THREE.Vector3(0, focalPointHeight, 0));
 
-      // Calculate dynamic distance: Zoom in when looking up or down
-      const pitchRatio = Math.abs(cameraPitch) / 1.4;
-      const scaledBaseDistance = baseCameraDistance * heightScale;
-      let currentCamDist = scaledBaseDistance - ((3.8 * heightScale) * pitchRatio);
+      if (isFirstPerson) {
+        let eyeHeight = animator.targetHeight * 0.9;
+        if (state.isProne) {
+          eyeHeight = animator.targetHeight * 0.25;
+        } else if (state.isCrouching) {
+          eyeHeight = animator.targetHeight * 0.55;
+        }
+        
+        const targetCamPos = state.position.clone().add(new THREE.Vector3(0, eyeHeight, 0));
+        
+        // Exactly follow X and Z to avoid framerate jitter when moving, smoothly lerp Y for crouching transitions
+        camera.position.x = targetCamPos.x;
+        camera.position.z = targetCamPos.z;
+        camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetCamPos.y, dt * 10);
+          
+        const lookDir = new THREE.Vector3(
+          -Math.sin(cameraYaw) * Math.cos(cameraPitch),
+          -Math.sin(cameraPitch),
+          -Math.cos(cameraYaw) * Math.cos(cameraPitch)
+        );
+        camera.lookAt(camera.position.clone().add(lookDir));
+      } else {
+        // Calculate dynamic distance: Zoom in when looking up or down
+        const pitchRatio = Math.abs(cameraPitch) / 1.4;
+        const scaledBaseDistance = baseCameraDistance * heightScale;
+        let currentCamDist = scaledBaseDistance - ((3.8 * heightScale) * pitchRatio);
 
-      // Dampen the running zoom-out lag specifically for the bulkier character (base_male_0)
-      if (animator.currentModelUrl && animator.currentModelUrl.includes('base_male_0')) {
-        const speedFactor = Math.min(1.0, state.speed / 18);
-        currentCamDist -= speedFactor * 1.25;
+        // Dampen the running zoom-out lag specifically for the bulkier character (base_male_0)
+        if (animator.currentModelUrl && animator.currentModelUrl.includes('base_male_0')) {
+          const speedFactor = Math.min(1.0, state.speed / 18);
+          currentCamDist -= speedFactor * 1.25;
+        }
+          
+        // Center camera directly on the player
+        const actualFocalPoint = focalPoint.clone();
+
+        const dynamicOffset = new THREE.Vector3(
+          currentCamDist * Math.sin(cameraYaw) * Math.cos(cameraPitch),
+          currentCamDist * Math.sin(cameraPitch),
+          currentCamDist * Math.cos(cameraYaw) * Math.cos(cameraPitch)
+        );
+          
+        const targetCamPos = actualFocalPoint.clone().add(dynamicOffset);
+        const camGroundH = worldGrid.getGroundHeight(targetCamPos.x, targetCamPos.z);
+        if (targetCamPos.y < camGroundH + 0.6) targetCamPos.y = camGroundH + 0.6;
+        // Use exact follow to eliminate camera-lag framerate jitter
+        camera.position.lerp(targetCamPos, 1.0);
+          
+        camera.lookAt(actualFocalPoint);
       }
-      
-      // Center camera directly on the player
-      const actualFocalPoint = focalPoint.clone();
-
-      const dynamicOffset = new THREE.Vector3(
-        currentCamDist * Math.sin(cameraYaw) * Math.cos(cameraPitch),
-        currentCamDist * Math.sin(cameraPitch),
-        currentCamDist * Math.cos(cameraYaw) * Math.cos(cameraPitch)
-      );
-      
-      const targetCamPos = actualFocalPoint.clone().add(dynamicOffset);
-      const camGroundH = worldGrid.getGroundHeight(targetCamPos.x, targetCamPos.z);
-      if (targetCamPos.y < camGroundH + 0.6) targetCamPos.y = camGroundH + 0.6;
-      // Use exact follow to eliminate camera-lag framerate jitter
-      camera.position.lerp(targetCamPos, 1.0);
-      
-      camera.lookAt(actualFocalPoint);
 
       // Lock our custom warm headlight directly to the camera center
       headLight.position.copy(camera.position);
 
+      // Keep directional light and its shadow camera tracking the player
+      sunLight.position.copy(state.position).add(new THREE.Vector3(35, 60, 25));
+      sunLight.target.position.copy(state.position);
+      sunLight.target.updateMatrixWorld();
+
       // --- UNDERWATER CAMERA FILTER ---
-      if (state.position.y < waterSurfaceY - 0.2) {
+      let eyeHeight = animator.targetHeight * 0.9;
+      if (state.isProne) eyeHeight = animator.targetHeight * 0.25;
+      else if (state.isCrouching) eyeHeight = animator.targetHeight * 0.55;
+      if (state.position.y + eyeHeight < waterSurfaceY - 0.05) {
          // Deep aqua fog and background when submerged
          (scene.fog as THREE.FogExp2).color.setHex(0x082b4a);
          (scene.fog as THREE.FogExp2).density = 0.08;
@@ -1795,12 +2171,30 @@ export default function App() {
         cameraShake = THREE.MathUtils.lerp(cameraShake, 0, dt * 6);
       }
 
-      // --- ANIMATE VISUAL MASCOT JOINT COMPOSITIONS ---
+// --- ANIMATE VISUAL MASCOT JOINT COMPOSITIONS ---
       animator.group.visible = !hideCharacterRef.current;
+      
       if (!hideCharacterRef.current) {
-        animator.lookTarget = camera.position;
+        animator.lookTarget = (isFirstPerson || state.isProne) ? null : camera.position;
         animator.update(state, dt);
       }
+
+      // Hide the character in first person so it doesn't clip into the camera,
+      // but keep it rendering so it casts shadows.
+      animator.group.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+            const mesh = child as THREE.Mesh;
+            // Also ensure we are on layer 0
+            mesh.layers.set(0);
+            if (mesh.material) {
+                const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                materials.forEach(mat => {
+                    mat.colorWrite = !isFirstPerson;
+                    mat.depthWrite = !isFirstPerson;
+                });
+            }
+        }
+      });
 
       // --- RENDER REMOTE PLAYERS ---
       const nowMs = performance.now();
@@ -1851,7 +2245,7 @@ export default function App() {
         remAnim.group.quaternion.slerp(targetQ, dt * 15);
         
         // Step animation
-        remAnim.lookTarget = camera.position;
+        remAnim.lookTarget = peer.state.isProne ? null : camera.position;
         remAnim.update(peer.state, dt);
         
         // Update Player Nametag
@@ -2120,6 +2514,19 @@ export default function App() {
       {/* HUD UI Elements */}
       <div className="absolute top-4 right-4 z-50 flex gap-2 items-center">
         <button
+          onClick={() => {
+              const newMode = !isEditorMode;
+              setIsEditorMode(newMode);
+              if (newMode && document.pointerLockElement) {
+                 document.exitPointerLock();
+              }
+          }}
+          className={`bg-black/60 border ${isEditorMode ? 'border-amber-400 text-amber-300' : 'border-amber-500/30 text-amber-400'} px-3 py-2 rounded hover:bg-black/80 transition-colors backdrop-blur pointer-events-auto flex items-center justify-center font-mono text-xs tracking-wider`}
+          title="Toggle Map Editor (M)"
+        >
+          MAP EDITOR
+        </button>
+        <button
           onClick={() => setShowCustomizer(!showCustomizer)}
           className={`bg-black/60 border ${showCustomizer ? 'border-cyan-400 text-cyan-300' : 'border-cyan-500/30 text-cyan-400'} p-2 rounded hover:bg-black/80 transition-colors backdrop-blur pointer-events-auto flex items-center justify-center`}
           title="Customize Character"
@@ -2158,6 +2565,38 @@ export default function App() {
         </button>
       </div>
 
+      {/* Map Editor Tool Panel */}
+      {isEditorMode && (
+        <div className="absolute top-20 left-4 w-56 bg-black/80 backdrop-blur-md border border-amber-500/30 rounded-lg p-4 z-50 pointer-events-auto flex flex-col gap-4 shadow-2xl">
+          <div className="flex justify-between items-center border-b border-amber-500/30 pb-2">
+            <h3 className="text-amber-400 font-mono text-sm uppercase tracking-wider">Map Editor</h3>
+          </div>
+          
+          <div className="flex flex-col gap-2">
+             <label className="text-amber-300 font-mono text-xs">Elevation Tools</label>
+             <div className="flex gap-2">
+                 <button onClick={() => setEditorTool('raise')} className={`flex-1 py-1 rounded text-xs font-mono ${editorTool === 'raise' ? 'bg-amber-600 text-white' : 'bg-gray-800 text-amber-400 hover:bg-gray-700'}`}>Raise</button>
+                 <button onClick={() => setEditorTool('lower')} className={`flex-1 py-1 rounded text-xs font-mono ${editorTool === 'lower' ? 'bg-amber-600 text-white' : 'bg-gray-800 text-amber-400 hover:bg-gray-700'}`}>Lower</button>
+                 <button onClick={() => setEditorTool('flatten')} className={`flex-1 py-1 rounded text-xs font-mono ${editorTool === 'flatten' ? 'bg-amber-600 text-white' : 'bg-gray-800 text-amber-400 hover:bg-gray-700'}`}>Flat</button>
+             </div>
+          </div>
+          
+          <div className="flex flex-col gap-2">
+             <label className="text-amber-300 font-mono text-xs">Paint Terrain</label>
+             <div className="grid grid-cols-2 gap-2">
+                 <button onClick={() => setEditorTool('grass')} className={`py-2 rounded text-xs font-bold ${editorTool === 'grass' ? 'border-2 border-white' : 'border border-gray-600'}`} style={{backgroundColor: '#8ab07d', color: '#fff'}}>Grass</button>
+                 <button onClick={() => setEditorTool('dirt')} className={`py-2 rounded text-xs font-bold ${editorTool === 'dirt' ? 'border-2 border-white' : 'border border-gray-600'}`} style={{backgroundColor: '#7c5a3a', color: '#fff'}}>Dirt</button>
+                 <button onClick={() => setEditorTool('sand')} className={`py-2 rounded text-xs font-bold ${editorTool === 'sand' ? 'border-2 border-white' : 'border border-gray-600'}`} style={{backgroundColor: '#eedd82', color: '#fff'}}>Sand</button>
+                 <button onClick={() => setEditorTool('snow')} className={`py-2 rounded text-xs font-bold ${editorTool === 'snow' ? 'border-2 border-white' : 'border border-gray-600'}`} style={{backgroundColor: '#ffffff', color: '#000'}}>Snow</button>
+             </div>
+          </div>
+          
+          <div className="mt-2 text-xs text-amber-500/70 font-mono leading-tight">
+            Click & drag to edit terrain. Use WASD to pan camera.
+          </div>
+        </div>
+      )}
+      
       {/* Character Customizer Overlay */}
       {showCustomizer && (
         <div className="absolute top-20 right-4 w-64 bg-black/80 backdrop-blur-md border border-cyan-500/30 rounded-lg p-4 z-50 pointer-events-auto flex flex-col gap-4 shadow-2xl max-h-[calc(100vh-6rem)] overflow-y-auto custom-scrollbar">

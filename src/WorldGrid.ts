@@ -129,19 +129,19 @@ export class WorldGrid {
       rock: new THREE.DodecahedronGeometry(1, 0)
     };
 
-    // Global water plane for the lake
-    const waterGeo = new THREE.PlaneGeometry(200, 200, 1, 1);
+    // Global water plane
+    const waterGeo = new THREE.PlaneGeometry(84000, 84000, 1, 1);
     const waterMat = new THREE.MeshStandardMaterial({
       color: 0x3b82f6,
       transparent: true,
       opacity: 0.6,
       roughness: 0.1,
       metalness: 0.1,
-      // side: THREE.DoubleSide
+      side: THREE.DoubleSide
     });
     const waterPlane = new THREE.Mesh(waterGeo, waterMat);
     waterPlane.rotation.x = -Math.PI / 2;
-    waterPlane.position.set(50, -0.5, 50); // Water level over the lake
+    waterPlane.position.set(0, -0.5, 0); // Water level globally
     
     const isPotato = localStorage.getItem('xyrtania_quality') === 'potato';
     if (!isPotato) {
@@ -152,12 +152,14 @@ export class WorldGrid {
     // Low-poly material set representing beautiful stylized environment
     this.sharedMaterials = {
       groundLight: new THREE.MeshStandardMaterial({
+        vertexColors: true,
         color: 0x8ab07d, // Stylized grass color
         roughness: 0.9,
         metalness: 0.05,
         flatShading: true
       }),
       groundDark: new THREE.MeshStandardMaterial({
+        vertexColors: true,
         color: 0x7c9c70, // Alternate dark grass color for checkering tile pattern
         roughness: 0.9,
         metalness: 0.05,
@@ -204,12 +206,201 @@ export class WorldGrid {
 
   private lakeRadius = 40;
   
+  // Editor Data
+  public heightData = new Map<string, number>();
+  public colorData = new Map<string, number>();
+  
+  public getEditorKey(x: number, z: number) {
+      return `${Math.round(x)},${Math.round(z)}`;
+  }
+  
+  public flattenArea(worldX: number, worldZ: number, radius: number = 5) {
+      const activeChunks = new Set<string>();
+      const gridX = Math.round(worldX / 4) * 4;
+      const gridZ = Math.round(worldZ / 4) * 4;
+      const targetHeight = this.getGroundHeight(gridX, gridZ);
+      
+      for (let dx = -radius; dx <= radius; dx+=4) {
+          for (let dz = -radius; dz <= radius; dz+=4) {
+             const dist = Math.sqrt(dx*dx + dz*dz);
+             if (dist <= radius) {
+                 const vx = gridX + dx;
+                 const vz = gridZ + dz;
+                 const key = this.getEditorKey(vx, vz);
+                 
+                 const currentHeight = this.getGroundHeight(vx, vz);
+                 const factor = Math.min(1, (1 - (dist / radius)) * 1.5);
+                 const newH = currentHeight + (targetHeight - currentHeight) * factor;
+                 this.heightData.set(key, newH);
+                 
+                 const chunks = this.getChunksForVertex(vx, vz);
+                 for (const c of chunks) activeChunks.add(c);
+             }
+          }
+      }
+      this.updateChunkGeometry(activeChunks);
+  }
+
+  private getChunksForVertex(vx: number, vz: number): string[] {
+      const chunks: string[] = [];
+      const half = this.chunkSize / 2;
+      
+      const cx1 = Math.floor((vx + half) / this.chunkSize);
+      const cz1 = Math.floor((vz + half) / this.chunkSize);
+      chunks.push(`${cx1},${cz1}`);
+      
+      if ((vx + half) % this.chunkSize === 0) {
+          chunks.push(`${cx1 - 1},${cz1}`);
+      }
+      if ((vz + half) % this.chunkSize === 0) {
+          chunks.push(`${cx1},${cz1 - 1}`);
+      }
+      if ((vx + half) % this.chunkSize === 0 && (vz + half) % this.chunkSize === 0) {
+          chunks.push(`${cx1 - 1},${cz1 - 1}`);
+      }
+      return chunks;
+  }
+
+  public setHeight(worldX: number, worldZ: number, height: number, radius: number = 5) {
+      const activeChunks = new Set<string>();
+      // Round the center to grid
+      const gridX = Math.round(worldX / 4) * 4;
+      const gridZ = Math.round(worldZ / 4) * 4;
+      
+      // Apply radially
+      for (let dx = -radius; dx <= radius; dx+=4) {
+          for (let dz = -radius; dz <= radius; dz+=4) {
+             const dist = Math.sqrt(dx*dx + dz*dz);
+             if (dist <= radius) {
+                 const vx = gridX + dx;
+                 const vz = gridZ + dz;
+                 const key = this.getEditorKey(vx, vz);
+                 // smooth brush
+                 const factor = 1 - (dist / radius);
+                 const currentHeight = this.getGroundHeight(vx, vz);
+                 this.heightData.set(key, currentHeight + height * factor);
+                 
+                 const chunks = this.getChunksForVertex(vx, vz);
+                 for (const c of chunks) activeChunks.add(c);
+             }
+          }
+      }
+      this.updateChunkGeometry(activeChunks);
+  }
+  
+  public setColor(worldX: number, worldZ: number, hexColor: number, radius: number = 8) {
+      const activeChunks = new Set<string>();
+      const gridX = Math.round(worldX / 4) * 4;
+      const gridZ = Math.round(worldZ / 4) * 4;
+      
+      for (let dx = -radius; dx <= radius; dx+=4) {
+          for (let dz = -radius; dz <= radius; dz+=4) {
+             if (Math.sqrt(dx*dx + dz*dz) <= radius) {
+                 const vx = gridX + dx;
+                 const vz = gridZ + dz;
+                 const key = this.getEditorKey(vx, vz);
+                 this.colorData.set(key, hexColor);
+                 
+                 const chunks = this.getChunksForVertex(vx, vz);
+                 for (const c of chunks) activeChunks.add(c);
+             }
+          }
+      }
+      this.updateChunkGeometry(activeChunks);
+  }
+  
+  private updateChunkGeometry(chunkKeys: Set<string>) {
+      for (const key of chunkKeys) {
+          const chunk = this.chunks.get(key);
+          if (chunk) {
+              const groundMesh = chunk.group.children[0] as THREE.Mesh;
+              if (!groundMesh || !groundMesh.geometry) continue;
+              
+              const geo = groundMesh.geometry;
+              const positions = geo.attributes.position;
+              const colors = geo.attributes.color;
+              
+              const parts = key.split(',');
+              const cx = parseInt(parts[0]);
+              const cz = parseInt(parts[1]);
+              const chunkWorldX = cx * this.chunkSize;
+              const chunkWorldZ = cz * this.chunkSize;
+              
+              // Convert base material color to rgb for fallback
+              const isEven = (cx + cz) % 2 === 0;
+              const baseColor = new THREE.Color(isEven ? 0x8ab07d : 0x7c9c70);
+              
+              for (let j = 0; j < positions.count; j++) {
+                 const vx = positions.getX(j);
+                 const vz = positions.getY(j);
+                 const worldX = chunkWorldX + vx;
+                 const worldZ = chunkWorldZ - vz;
+                 
+                 const h = this.getGroundHeight(worldX, worldZ);
+                 positions.setZ(j, h);
+                 
+                 const eKey = this.getEditorKey(worldX, worldZ);
+                 const hex = this.colorData.has(eKey) ? this.colorData.get(eKey)! : baseColor.getHex();
+                 const vertexColor = new THREE.Color(hex);
+                 colors.setXYZ(j, vertexColor.r, vertexColor.g, vertexColor.b);
+              }
+              
+              geo.computeVertexNormals();
+              positions.needsUpdate = true;
+              colors.needsUpdate = true;
+          }
+      }
+  }
+
+  private rebuildChunks(chunkKeys: Set<string>) {
+      for (const key of chunkKeys) {
+          const chunk = this.chunks.get(key);
+          if (chunk) {
+              const parts = key.split(',');
+              const cx = parseInt(parts[0]);
+              const cz = parseInt(parts[1]);
+              
+              this.disposeChunk(chunk);
+              this.chunks.delete(key);
+              this.generateChunk(cx, cz);
+          }
+      }
+  }
+
+  
   public getGroundHeight(x: number, z: number): number {
+      const gridX = Math.floor(x / 4) * 4;
+      const gridZ = Math.floor(z / 4) * 4;
+      
+      const h00 = this.getExactHeight(gridX, gridZ);
+      const h10 = this.getExactHeight(gridX + 4, gridZ);
+      const h01 = this.getExactHeight(gridX, gridZ + 4);
+      const h11 = this.getExactHeight(gridX + 4, gridZ + 4);
+      
+      const u = (x - gridX) / 4;
+      const v = (z - gridZ) / 4;
+      
+      // THREE.PlaneGeometry splits quads from bottom-left (0,1) to top-right (1,0)
+      if (u + v < 1) {
+          // Top-left triangle: h00, h10, h01
+          // At u=0,v=0 -> h00. At u=1,v=0 -> h10. At u=0,v=1 -> h01
+          return h00 + (h10 - h00) * u + (h01 - h00) * v;
+      } else {
+          // Bottom-right triangle: h11, h10, h01
+          // At u=1,v=1 -> h11. At u=1,v=0 -> h10. At u=0,v=1 -> h01
+          return h11 + (h10 - h11) * (1 - v) + (h01 - h11) * (1 - u);
+      }
+  }
+
+  private getExactHeight(x: number, z: number): number {
+     const key = this.getEditorKey(x, z);
+     if (this.heightData.has(key)) {
+         return this.heightData.get(key)!;
+     }
      const dx = x - 50;
      const dz = z - 50;
      const distFromCenter = Math.sqrt(dx*dx + dz*dz);
      if (distFromCenter < this.lakeRadius) {
-         // creating a deep lake off center
          const depth = Math.cos((distFromCenter / this.lakeRadius) * (Math.PI / 2));
          return -6 * depth;
      }
@@ -277,23 +468,34 @@ export class WorldGrid {
     // Determine coordinate-based checkerboarding coloring
     const isEven = (cx + cz) % 2 === 0;
     const groundMaterial = isEven ? this.sharedMaterials.groundLight : this.sharedMaterials.groundDark;
-
+    
     const chunkWorldX = cx * this.chunkSize;
     const chunkWorldZ = cz * this.chunkSize;
-
-    // Create Ground Mesh (with vertex displacement for lakes)
     const groundGeo = isPotato ? new THREE.PlaneGeometry(this.chunkSize, this.chunkSize, 1, 1) : this.sharedGeometries.ground.clone();
+    
+    // Convert base material color to rgb for fallback
+    const baseColor = new THREE.Color(isEven ? 0x8ab07d : 0x7c9c70);
+    
     const positions = groundGeo.attributes.position;
+    const colors = new Float32Array(positions.count * 3);
+    const colorAttribute = new THREE.BufferAttribute(colors, 3);
+    groundGeo.setAttribute('color', colorAttribute);
+    
     for (let j = 0; j < positions.count; j++) {
-       // Plane is placed at chunkWorldX, chunkWorldZ, but geometry is centered at 0,0 locally
        const vx = positions.getX(j);
-       const vz = positions.getY(j); // Y in plane geo is Z in world after rotation
-       
+       const vz = positions.getY(j);
        const worldX = chunkWorldX + vx;
-       const worldZ = chunkWorldZ - vz; // Because plane rotation.x = -Math.PI / 2 flips the Y axis to Z
+       const worldZ = chunkWorldZ - vz;
        
        const h = this.getGroundHeight(worldX, worldZ);
-       positions.setZ(j, h); // Z in plane geo is Y in world
+       positions.setZ(j, h);
+       
+       const key = this.getEditorKey(worldX, worldZ);
+       const hex = this.colorData.has(key) ? this.colorData.get(key)! : baseColor.getHex();
+       const vertexColor = new THREE.Color(hex);
+       colors[j * 3] = vertexColor.r;
+       colors[j * 3 + 1] = vertexColor.g;
+       colors[j * 3 + 2] = vertexColor.b;
     }
     groundGeo.computeVertexNormals();
 

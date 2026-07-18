@@ -1,0 +1,147 @@
+  1004	    let editorDragActive = false;
+  1005	    const handlePointerDown = (clientX: number, clientY: number, touchId: number | null) => {
+  1006	      if (!isEditorModeRef.current) wasInEditorMode = false;
+  1007	
+  1008	      if (isEditorModeRef.current) {
+  1009	        editorDragActive = true;
+  1010	        applyEditorTool(clientX, clientY);
+  1011	        return;
+  1012	      }
+  1013	
+  1014	      // 1. Raycast into flat Hud Scene to verify circular buttons hits
+  1015	      const raycaster = new THREE.Raycaster();
+  1016	      const mouse = new THREE.Vector2();
+  1017	      mouse.x = (clientX / window.innerWidth) * 2 - 1;
+  1018	      mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+  1019	
+  1020	      raycaster.setFromCamera(mouse, hudCamera);
+  1021	      const intersects = raycaster.intersectObjects(hudElementsGroup.children, true);
+  1022	
+  1023	      let buttonHit = false;
+  1024	      for (const hit of intersects) {
+  1025	        let parent: THREE.Object3D | null = hit.object;
+  1026	        while (parent && parent !== hudScene) {
+  1027	          if (parent.name === 'btn_jump') {
+  1028	            initiateJump();
+  1029	            jumpActive = true;
+  1030	            jumpTouchId = touchId;
+  1031	            buttonHit = true;
+  1032	            break;
+  1033	          }
+  1034	          if (parent.name === 'btn_crouch') {
+  1035	            state.isCrouching = !state.isCrouching;
+  1036	            if (state.isCrouching) state.isProne = false;
+  1037	            buttonHit = true;
+  1038	            break;
+  1039	          }
+  1040	          if (parent.name === 'btn_prone') {
+  1041	            state.isProne = !state.isProne;
+  1042	            if (state.isProne) state.isCrouching = false;
+  1043	            buttonHit = true;
+  1044	            break;
+  1045	          }
+  1046	          
+  1047	          if (parent.name === 'btn_fpv') {
+  1048	            isFirstPerson = !isFirstPerson;
+  1049	            buttonHit = true;
+  1050	            break;
+  1051	          }
+  1052	          if (parent.name === 'btn_fullscreen') {
+  1053	            toggleFullscreen();
+  1054	            buttonHit = true;
+  1055	            break;
+  1056	          }
+  1057	          parent = parent.parent;
+  1058	        }
+  1059	        if (buttonHit) break;
+  1060	      }
+  1061	
+  1062	      // 2. If no button is hit, use split-screen inputs (left side for steer, right side for camera orbit look)
+  1063	      if (!buttonHit) {
+  1064	        const isLeftHalf = clientX < window.innerWidth / 2;
+  1065	        if (isLeftHalf) {
+  1066	          moveActive = true;
+  1067	          moveTouchId = touchId;
+  1068	          moveStartX = clientX;
+  1069	          moveStartY = clientY;
+  1070	          moveCurrentX = clientX;
+  1071	          moveCurrentY = clientY;
+  1072	          
+  1073	          // Display and position virtual joystick DOM container
+  1074	          if (joystickRef.current) {
+  1075	            joystickRef.current.style.display = 'block';
+  1076	            joystickRef.current.style.left = `${clientX}px`;
+  1077	            joystickRef.current.style.top = `${clientY}px`;
+  1078	          }
+  1079	          if (joystickKnobRef.current) {
+  1080	            joystickKnobRef.current.style.transform = `translate(0px, 0px)`;
+  1081	          }
+  1082	        } else {
+  1083	          camActive = true;
+  1084	          camTouchId = touchId;
+  1085	          camStartX = clientX;
+  1086	          camStartY = clientY;
+  1087	          camCurrentX = clientX;
+  1088	          camCurrentY = clientY;
+  1089	
+  1090	          // Position look pointer ring visual
+  1091	          if (lookRef.current) {
+  1092	            lookRef.current.style.display = 'block';
+  1093	            lookRef.current.style.left = `${clientX}px`;
+  1094	            lookRef.current.style.top = `${clientY}px`;
+  1095	          }
+  1096	          if (lookKnobRef.current) {
+  1097	            lookKnobRef.current.style.transform = `translate(0px, 0px)`;
+  1098	          }
+  1099	        }
+  1100	      }
+  1101	    };
+  1102	
+  1103	    const handlePointerMove = (clientX: number, clientY: number, touchId: number | null) => {
+  1104	      if (isEditorModeRef.current && editorDragActive) {
+  1105	        applyEditorTool(clientX, clientY);
+  1106	        return;
+  1107	      }
+  1108	
+  1109	      if (moveActive && moveTouchId === touchId) {
+  1110	        moveCurrentX = clientX;
+  1111	        moveCurrentY = clientY;
+  1112	        const dx = clientX - moveStartX;
+  1113	        const dy = clientY - moveStartY;
+  1114	        // Clamp virtual knob graphics within 45px radius boundary
+  1115	        const angle = Math.atan2(dy, dx);
+  1116	        const dist = Math.min(45, Math.sqrt(dx*dx + dy*dy));
+  1117	        const knobX = dist * Math.cos(angle);
+  1118	        const knobY = dist * Math.sin(angle);
+  1119	        if (joystickKnobRef.current) {
+  1120	          joystickKnobRef.current.style.transform = `translate(${knobX}px, ${knobY}px)`;
+  1121	        }
+  1122	      }
+  1123	      if (camActive && camTouchId === touchId) {
+  1124	        camCurrentX = clientX;
+  1125	        camCurrentY = clientY;
+  1126	        const dx = clientX - camStartX;
+  1127	        const dy = clientY - camStartY;
+  1128	        // Clamp camera knob graphics within 45px radius boundary
+  1129	        const angle = Math.atan2(dy, dx);
+  1130	        const dist = Math.min(45, Math.sqrt(dx*dx + dy*dy));
+  1131	        const knobX = dist * Math.cos(angle);
+  1132	        const knobY = dist * Math.sin(angle);
+  1133	        if (lookKnobRef.current) {
+  1134	          lookKnobRef.current.style.transform = `translate(${knobX}px, ${knobY}px)`;
+  1135	        }
+  1136	      }
+  1137	    };
+  1138	
+  1139	    const handlePointerUp = (touchId: number | null) => {
+  1140	      if (isEditorModeRef.current) {
+  1141	        editorDragActive = false;
+  1142	        return;
+  1143	      }
+  1144	
+  1145	      if (touchId === null) {
+  1146	        moveActive = false;
+  1147	        moveTouchId = null;
+  1148	        camActive = false;
+  1149	        camTouchId = null;
+  1150	        jumpActive = false;
