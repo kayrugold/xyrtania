@@ -11,6 +11,7 @@ export enum JumpPhase {
 }
 
 export interface PlayerState {
+  playerId?: string;
   displayName?: string;
   modelUrl?: string;
   currentAnimation?: string;

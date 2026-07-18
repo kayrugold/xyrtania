@@ -298,7 +298,7 @@ export class NetworkManager {
   private setupRoomListeners(room: Room) {
       room.onMessage("terrain_edit_error", (data: any) => {
         console.error("Terrain edit rejected by server:", data);
-        alert("Terrain edit rejected: " + JSON.stringify(data, null, 2));
+        // Do not use alert() as it blocks the main thread and causes Colyseus connection timeouts
         if (this.onAdminStatus) {
             this.onAdminStatus(false);
         }
@@ -332,6 +332,18 @@ export class NetworkManager {
               return; // Ignore local player
           }
           
+          // Client-side ghost deduping:
+          // If another peer has the exact same playerId (wallet address), they are a ghost of the same user.
+          if (player.playerId) {
+              for (const [existingSessionId, existingPeer] of this.peers.entries()) {
+                  if (existingPeer.state.playerId === player.playerId && existingSessionId !== sessionId) {
+                      console.warn("Client-side ghost detected! Removing old session:", existingSessionId);
+                      this.peers.delete(existingSessionId);
+                      if (this.onPeerLeave) this.onPeerLeave(existingSessionId);
+                  }
+              }
+          }
+          
           console.log("Player joined:", sessionId);
           this.peers.set(sessionId, {
               id: sessionId,
@@ -341,6 +353,7 @@ export class NetworkManager {
           if (this.onPeersChange) this.onPeersChange(this.peers.size);
 
           const peer = this.peers.get(sessionId)!;
+          peer.state.playerId = player.playerId;
           peer.state.position.set(player.x, player.y, player.z);
           peer.state.direction = player.rotation;
           peer.state.modelUrl = player.avatarId || '/assets/character/Xyrtania_Male_NoMorphs.glb';
@@ -464,6 +477,11 @@ export class NetworkManager {
               attempts++;
               console.log(`Reconnection attempt ${attempts}/${maxAttempts}...`);
               const reconnectedRoom = await this.client.reconnect(token);
+              
+              if (this.isDisconnected) {
+                  reconnectedRoom.leave();
+                  return;
+              }
               
               // Successfully reconnected!
               this.room = reconnectedRoom;
