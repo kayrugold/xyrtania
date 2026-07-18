@@ -10,6 +10,7 @@ export class WorldGrid {
   private halfMapBounds = 42000; // Total conceptual bounds are 84,000 x 84,000
 
   // Shared geometry and material caches for the procedural assets to boost rendering speed
+  public onTerrainEdit?: (edits: any[]) => void;
   public treePrototypes: { meshes: THREE.Mesh[] }[] = [];
 
   private sharedGeometries: {

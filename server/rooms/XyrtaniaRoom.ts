@@ -56,7 +56,15 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
       const player = this.state.players.get(client.sessionId);
       if (!player) return;
 
-      const isAdmin = adminKeys.includes(player.playerId);
+      const isAdmin = adminKeys.some(key => {
+        const lowerKey = key.trim().replace(/^['"]|['"]$/g, '').toLowerCase();
+        const lowerPlayerId = player.playerId.trim().toLowerCase();
+        if (lowerKey.includes('...')) {
+          const parts = lowerKey.split('...');
+          return lowerPlayerId.startsWith(parts[0]) && lowerPlayerId.endsWith(parts[1]);
+        }
+        return lowerKey === lowerPlayerId;
+      });
       const isDevOverride = data.secret === devEditSecret;
 
       if (isAdmin || isDevOverride) {

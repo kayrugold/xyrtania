@@ -249,7 +249,8 @@ export class NetworkManager {
       } else {
         room = await this.client.joinOrCreate("xyrtania_room", {
             displayName: initialDisplayName,
-            avatarId: initialAvatarId
+            avatarId: initialAvatarId,
+            playerId: session.playerId
         });
       }
 

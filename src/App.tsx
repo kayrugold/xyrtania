@@ -300,6 +300,16 @@ export default function App() {
     const worldGrid = new WorldGrid(scene);
     worldGridRef.current = worldGrid;
     let isWorldGridLoaded = false;
+    
+    // Wire up local terrain edits to be sent over the network
+    // We use a getter for the secret so it uses the most up-to-date state if possible
+    // Actually, devEditSecret is in the component scope, so the closure will capture the initial value.
+    // Instead we can use a ref for the secret.
+    worldGrid.onTerrainEdit = (edits) => {
+        if (networkManagerRef.current) {
+            networkManagerRef.current.sendTerrainEdit(devEditSecretRef.current || "", edits);
+        }
+    };
     worldGrid.loadAssets().then(() => {
         isWorldGridLoaded = true;
     });
