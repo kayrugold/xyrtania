@@ -181,9 +181,11 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
                 const existingClient = this.clients.find(c => c.sessionId === sessionId);
                 if (existingClient) {
                     existingClient.leave(4000, "Joined from another session");
+                } else {
+                    // If client object isn't found for some reason, clean up manually
+                    this.state.players.delete(sessionId);
+                    this.playerLoadedRegions.delete(sessionId);
                 }
-                this.state.players.delete(sessionId);
-                this.playerLoadedRegions.delete(sessionId);
             }
         }
     }
@@ -308,10 +310,21 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
                   const base64Data = row.data;
                   if (!base64Data) continue;
                   
-                  const buffer = Buffer.from(base64Data, 'base64');
+                  let buffer = Buffer.from(base64Data, 'base64');
                   try {
-                      const edits = decodeEdits(buffer);
+                      let edits = decodeEdits(buffer);
                       
+                      // Fallback for legacy binary string format
+                      if (edits.length === 0 && base64Data.length > 20) {
+                          try {
+                              console.warn(`Trying legacy binary decode for ${rKey}...`);
+                              buffer = Buffer.from(base64Data, 'binary');
+                              edits = decodeEdits(buffer);
+                          } catch (e2) {
+                              // ignore
+                          }
+                      }
+
                       if (!this.terrainRegions.has(rKey)) this.terrainRegions.set(rKey, new Map());
                       const region = this.terrainRegions.get(rKey);
                       for (const edit of edits) {
@@ -329,8 +342,22 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
       }
   }
 
-  onLeave(client: Client, consented: boolean) {
+  async onLeave(client: Client, consented: boolean) {
     console.log(client.sessionId, "left!");
+    
+    // If they didn't explicitly close the connection (e.g., closed tab intentionally without network drop), give them a chance to reconnect
+    if (!consented) {
+        try {
+            console.log(`Client ${client.sessionId} disconnected abruptly. Waiting for reconnection...`);
+            // Allow 15 seconds for the client to reconnect
+            await this.allowReconnection(client, 15);
+            console.log(`Client ${client.sessionId} successfully reconnected!`);
+            return;
+        } catch (e) {
+            console.log(`Client ${client.sessionId} failed to reconnect in time.`);
+        }
+    }
+
     this.state.players.delete(client.sessionId);
     this.playerLoadedRegions.delete(client.sessionId);
   }

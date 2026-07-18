@@ -138,11 +138,11 @@ export default function App() {
 
   const [connectionMode, setConnectionMode] = useState<'colyseus_render' | 'colyseus_local' | 'p2p'>(() => {
     let saved = localStorage.getItem('xyrtania_connection_mode') as 'colyseus_render' | 'colyseus_local' | 'p2p' | 'colyseus';
-    if (saved === 'colyseus' || saved === 'colyseus_render' || saved === 'p2p') {
-      saved = 'colyseus_local';
-      localStorage.setItem('xyrtania_connection_mode', 'colyseus_local');
+    if (saved === 'colyseus') {
+      saved = 'colyseus_render';
+      localStorage.setItem('xyrtania_connection_mode', 'colyseus_render');
     }
-    return saved || 'colyseus_local';
+    return saved || 'colyseus_render';
   });
 
   const handleConnectionModeChange = (mode: 'colyseus_render' | 'colyseus_local' | 'p2p') => {
@@ -2704,6 +2704,7 @@ export default function App() {
         <div className="absolute top-20 left-4 w-56 bg-black/80 backdrop-blur-md border border-amber-500/30 rounded-lg p-4 z-50 pointer-events-auto flex flex-col gap-4 shadow-2xl">
           <div className="flex justify-between items-center border-b border-amber-500/30 pb-2">
             <h3 className="text-amber-400 font-mono text-sm uppercase tracking-wider">Map Editor</h3>
+            <button onClick={() => { setIsEditorMode(false); if (document.pointerLockElement) document.exitPointerLock(); }} className="text-gray-400 hover:text-white pointer-events-auto text-xs font-mono">Close [X]</button>
           </div>
           
           <div className="flex flex-col gap-2">
@@ -2731,8 +2732,17 @@ export default function App() {
               type="password" 
               value={devEditSecret}
               onChange={(e) => setDevEditSecret(e.target.value)}
-              placeholder="Leave blank if admin..."
-              className="bg-gray-900 border border-amber-500/50 rounded px-2 py-1 text-xs text-amber-400 w-full outline-none focus:border-amber-400"
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter') {
+                  if (networkManagerRef.current) {
+                    networkManagerRef.current.verifyAdminSecret(devEditSecret);
+                  }
+                }
+              }}
+              onKeyUp={(e) => e.stopPropagation()}
+              placeholder="Enter secret and press Enter..."
+              className="bg-gray-900 border border-amber-500/50 rounded px-2 py-1 text-xs text-amber-400 w-full outline-none focus:border-amber-400 pointer-events-auto"
             />
           </div>
           

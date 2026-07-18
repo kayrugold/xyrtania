@@ -58,9 +58,12 @@ export class NetworkManager {
     let savedMode = localStorage.getItem('xyrtania_connection_mode') as 'colyseus_render' | 'colyseus_local' | 'p2p';
     
     // Support upgrading old 'colyseus' string if it is stored in localStorage
-    if (savedMode as any === 'colyseus' || savedMode as any === 'colyseus_render' || savedMode as any === 'p2p') {
-      savedMode = 'colyseus_local';
-      localStorage.setItem('xyrtania_connection_mode', 'colyseus_local');
+    if (savedMode as any === 'colyseus') {
+      savedMode = 'colyseus_render';
+      localStorage.setItem('xyrtania_connection_mode', 'colyseus_render');
+    }
+    if (savedMode) {
+      this.connectionMode = savedMode;
     }
     
     if (savedMode === 'p2p') {
@@ -401,7 +404,8 @@ export class NetworkManager {
           if (this.onPeersChange) this.onPeersChange(0);
           if (this.onStatusChange) this.onStatusChange(this.status);
           // 1000 is normal/consented close
-          if (code !== 1000 && !this.isDisconnected) {
+          // 4000 is our custom code for "Joined from another session" (kicked)
+          if (code !== 1000 && code !== 4000 && !this.isDisconnected) {
               const token = room.reconnectionToken || localStorage.getItem('xyrtania_reconnection_token');
               if (token) {
                   this.handleReconnection(token);
@@ -409,6 +413,11 @@ export class NetworkManager {
                   this.connectToServer();
               }
           } else {
+              if (code === 4000) {
+                  console.warn("Disconnected because you joined from another tab/device.");
+                  this.status = 'disconnected';
+                  if (this.onStatusChange) this.onStatusChange(this.status);
+              }
               localStorage.removeItem('xyrtania_reconnection_token');
           }
       });
