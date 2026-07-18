@@ -3,6 +3,7 @@ import { Schema, type, MapSchema } from "@colyseus/schema";
 
 export class Player extends Schema {
   @type("string") id: string = "";
+  @type("string") playerId: string = "";
   @type("number") x: number = 0;
   @type("number") y: number = 0;
   @type("number") z: number = 0;
@@ -20,11 +21,16 @@ export class Player extends Schema {
 
 export class XyrtaniaState extends Schema {
   @type({ map: Player }) players = new MapSchema<Player>();
+  // We keep a simple log of edits to send to new players
+  terrainEditsLog: Map<string, any> = new Map();
 }
 
 export class XyrtaniaRoom extends Room<XyrtaniaState> {
   onCreate(options: any) {
     this.setState(new XyrtaniaState());
+    
+    const adminKeys = process.env.ADMIN_KEYS ? process.env.ADMIN_KEYS.split(',') : [];
+    const devEditSecret = process.env.DEV_EDIT_SECRET || "dev-secret";
 
     this.onMessage("move", (client, data) => {
       const player = this.state.players.get(client.sessionId);
@@ -45,6 +51,38 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
       }
     });
 
+
+    this.onMessage("TERRAIN_EDIT", (client, data) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player) return;
+
+      const isAdmin = adminKeys.includes(player.playerId);
+      const isDevOverride = data.secret === devEditSecret;
+
+      if (isAdmin || isDevOverride) {
+        // Broadcast the edit to all OTHER clients
+        this.broadcast("TERRAIN_EDIT", data.edits, { except: client });
+        
+        // Store for late-joiners, deduplicating by vertex
+        for (const edit of data.edits) {
+            const key = `${edit.vx}_${edit.vz}`;
+            const existing = this.state.terrainEditsLog.get(key) || { vx: edit.vx, vz: edit.vz };
+            if (edit.h !== undefined) existing.h = edit.h;
+            if (edit.c !== undefined) existing.c = edit.c;
+            this.state.terrainEditsLog.set(key, existing);
+        }
+        
+        // Prevent unbounded memory growth by keeping only the latest 10,000 unique vertices
+        if (this.state.terrainEditsLog.size > 10000) {
+            // Convert to array, slice the oldest, and rebuild map
+            const entries = Array.from(this.state.terrainEditsLog.entries());
+            this.state.terrainEditsLog = new Map(entries.slice(-10000));
+        }
+      } else {
+        console.warn(`Unauthorized terrain edit attempt by ${player.playerId}`);
+      }
+    });
+
     this.onMessage("setAnimation", (client, animationState) => {
       const player = this.state.players.get(client.sessionId);
       if (player && typeof animationState === 'string') {
@@ -58,6 +96,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
     console.log(client.sessionId, "joined!");
     const player = new Player();
     player.id = client.sessionId;
+    player.playerId = options.playerId || "";
     player.x = 0;
     player.y = 0;
     player.z = 0;
@@ -70,6 +109,11 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
     player.isProne = false;
     
     this.state.players.set(client.sessionId, player);
+    
+    // Send all historical terrain edits to the new player
+    if (this.state.terrainEditsLog.size > 0) {
+        client.send("TERRAIN_EDIT", Array.from(this.state.terrainEditsLog.values()));
+    }
   }
 
   onLeave(client: Client, consented: boolean) {

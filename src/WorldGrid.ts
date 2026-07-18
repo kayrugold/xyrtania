@@ -216,6 +216,7 @@ export class WorldGrid {
   
   public flattenArea(worldX: number, worldZ: number, radius: number = 5) {
       const activeChunks = new Set<string>();
+      const edits: any[] = [];
       const gridX = Math.round(worldX / 4) * 4;
       const gridZ = Math.round(worldZ / 4) * 4;
       const targetHeight = this.getGroundHeight(gridX, gridZ);
@@ -239,6 +240,7 @@ export class WorldGrid {
           }
       }
       this.updateChunkGeometry(activeChunks);
+      if (this.onTerrainEdit && edits.length > 0) this.onTerrainEdit(edits);
   }
 
   private getChunksForVertex(vx: number, vz: number): string[] {
@@ -263,6 +265,7 @@ export class WorldGrid {
 
   public setHeight(worldX: number, worldZ: number, height: number, radius: number = 5) {
       const activeChunks = new Set<string>();
+      const edits: any[] = [];
       // Round the center to grid
       const gridX = Math.round(worldX / 4) * 4;
       const gridZ = Math.round(worldZ / 4) * 4;
@@ -278,7 +281,9 @@ export class WorldGrid {
                  // smooth brush
                  const factor = 1 - (dist / radius);
                  const currentHeight = this.getGroundHeight(vx, vz);
-                 this.heightData.set(key, currentHeight + height * factor);
+                 const newHeight = currentHeight + height * factor;
+                 this.heightData.set(key, newHeight);
+                 edits.push({ vx, vz, h: newHeight });
                  
                  const chunks = this.getChunksForVertex(vx, vz);
                  for (const c of chunks) activeChunks.add(c);
@@ -286,10 +291,12 @@ export class WorldGrid {
           }
       }
       this.updateChunkGeometry(activeChunks);
+      if (this.onTerrainEdit && edits.length > 0) this.onTerrainEdit(edits);
   }
   
   public setColor(worldX: number, worldZ: number, hexColor: number, radius: number = 8) {
       const activeChunks = new Set<string>();
+      const edits: any[] = [];
       const gridX = Math.round(worldX / 4) * 4;
       const gridZ = Math.round(worldZ / 4) * 4;
       
@@ -300,6 +307,7 @@ export class WorldGrid {
                  const vz = gridZ + dz;
                  const key = this.getEditorKey(vx, vz);
                  this.colorData.set(key, hexColor);
+                 edits.push({ vx, vz, c: hexColor });
                  
                  const chunks = this.getChunksForVertex(vx, vz);
                  for (const c of chunks) activeChunks.add(c);
@@ -307,8 +315,23 @@ export class WorldGrid {
           }
       }
       this.updateChunkGeometry(activeChunks);
+      if (this.onTerrainEdit && edits.length > 0) this.onTerrainEdit(edits);
   }
   
+
+  public applyEdits(edits: any[]) {
+      const activeChunks = new Set<string>();
+      for (const edit of edits) {
+          const key = this.getEditorKey(edit.vx, edit.vz);
+          if (edit.h !== undefined) this.heightData.set(key, edit.h);
+          if (edit.c !== undefined) this.colorData.set(key, edit.c);
+          
+          const chunks = this.getChunksForVertex(edit.vx, edit.vz);
+          for (const c of chunks) activeChunks.add(c);
+      }
+      this.updateChunkGeometry(activeChunks);
+  }
+
   private updateChunkGeometry(chunkKeys: Set<string>) {
       for (const key of chunkKeys) {
           const chunk = this.chunks.get(key);

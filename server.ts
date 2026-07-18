@@ -12,14 +12,6 @@ function restoreAssets() {
   console.log("[Asset Restore] Checking integrity of critical 3D models...");
   const assetsToRestore = [
     {
-      glb: "public/assets/character/Xyrtania_Male_Prototype.glb",
-      b64: "backup_assets/Xyrtania_Male_Prototype.b64"
-    },
-    {
-      glb: "public/assets/character/teacher_body_modular.glb",
-      b64: "backup_assets/teacher_body_modular.b64"
-    },
-    {
       glb: "public/assets/character/customization/teacher_head_style_1.glb",
       b64: "backup_assets/teacher_head_style_1.b64"
     }

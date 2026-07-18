@@ -2,6 +2,7 @@ import { Client, Room } from 'colyseus.js';
 import { PlayerState } from './types';
 import * as THREE from 'three';
 import { joinRoom, selfId } from '@trystero-p2p/torrent';
+import { CryptoAuth } from './auth/CryptoAuth';
 
 export interface RemotePlayer {
   id: string;
@@ -31,6 +32,7 @@ export class NetworkManager {
   public onPeerLeave?: (id: string) => void;
   public onPeerAnimationStateChange?: (id: string, animationState: string) => void;
   public onPeerDisplayNameChange?: (id: string, displayName: string) => void;
+  public onTerrainEdit?: (edits: any[]) => void;
   
   public onStatusChange?: (status: 'connected' | 'disconnected' | 'reconnecting', roomId?: string) => void;
   public onPeersChange?: (peersCount: number) => void;
@@ -224,6 +226,8 @@ export class NetworkManager {
       // Clean up any stale old-format session variables
       localStorage.removeItem('xyrtania_last_room_id');
       localStorage.removeItem('xyrtania_last_session_id');
+      
+      const session = CryptoAuth.initSession();
 
       const savedToken = localStorage.getItem('xyrtania_reconnection_token');
 
@@ -238,7 +242,8 @@ export class NetworkManager {
           localStorage.removeItem('xyrtania_reconnection_token');
           room = await this.client.joinOrCreate("xyrtania_room", {
               displayName: initialDisplayName,
-              avatarId: initialAvatarId
+              avatarId: initialAvatarId,
+              playerId: session.playerId
           });
         }
       } else {
@@ -272,6 +277,12 @@ export class NetworkManager {
   }
 
   private setupRoomListeners(room: Room) {
+      room.onMessage("TERRAIN_EDIT", (edits: any[]) => {
+        if (this.onTerrainEdit) {
+          this.onTerrainEdit(edits);
+        }
+      });
+      
       // Persist reconnection token for mobile/reload silent reconnection
       if (room.reconnectionToken) {
           localStorage.setItem('xyrtania_reconnection_token', room.reconnectionToken);
@@ -495,6 +506,35 @@ export class NetworkManager {
       nearby.sort((a, b) => a.state.position.distanceTo(center) - b.state.position.distanceTo(center));
       return nearby.slice(0, 30);
   }
+
+
+
+  private terrainEditBuffer: Map<string, any> = new Map();
+  private terrainEditTimeout: any = null;
+
+  public sendTerrainEdit(secret: string, edits: any[]) {
+    if (this.connectionMode === 'p2p') return;
+    
+    for (const edit of edits) {
+      const key = `${edit.vx}_${edit.vz}`;
+      const existing = this.terrainEditBuffer.get(key) || { vx: edit.vx, vz: edit.vz };
+      if (edit.h !== undefined) existing.h = edit.h;
+      if (edit.c !== undefined) existing.c = edit.c;
+      this.terrainEditBuffer.set(key, existing);
+    }
+    
+    if (!this.terrainEditTimeout) {
+      this.terrainEditTimeout = setTimeout(() => {
+        if (this.room && this.terrainEditBuffer.size > 0) {
+          const batchedEdits = Array.from(this.terrainEditBuffer.values());
+          this.room.send("TERRAIN_EDIT", { secret, edits: batchedEdits });
+          this.terrainEditBuffer.clear();
+        }
+        this.terrainEditTimeout = null;
+      }, 50); // 20hz batching
+    }
+  }
+
 
   public disconnect() {
       this.isDisconnected = true;

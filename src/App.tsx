@@ -46,6 +46,9 @@ export default function App() {
   const [isEditorMode, setIsEditorMode] = useState(false);
 
   const [editorTool, setEditorTool] = useState<'raise' | 'lower' | 'flatten' | 'grass' | 'dirt' | 'sand' | 'snow'>('raise');
+  const [devEditSecret, setDevEditSecret] = useState<string>('');
+  const devEditSecretRef = useRef('');
+  useEffect(() => { devEditSecretRef.current = devEditSecret; }, [devEditSecret]);
   const isEditorModeRef = useRef(false);
   useEffect(() => { isEditorModeRef.current = isEditorMode; }, [isEditorMode]);
   const editorToolRef = useRef(editorTool);
@@ -342,6 +345,12 @@ export default function App() {
     // --- 5. NETWORK MANAGER INITIALIZATION ---
     const networkManager = new NetworkManager('xyrtania-world-1', 'main-room');
     networkManagerRef.current = networkManager;
+    
+    networkManager.onTerrainEdit = (edits) => {
+      if (worldGridRef.current) {
+        worldGridRef.current.applyEdits(edits);
+      }
+    };
     const remoteAnimators = new Map<string, CharacterAnimator>();
 
     // Initial state bindings
@@ -2589,6 +2598,17 @@ export default function App() {
                  <button onClick={() => setEditorTool('sand')} className={`py-2 rounded text-xs font-bold ${editorTool === 'sand' ? 'border-2 border-white' : 'border border-gray-600'}`} style={{backgroundColor: '#eedd82', color: '#fff'}}>Sand</button>
                  <button onClick={() => setEditorTool('snow')} className={`py-2 rounded text-xs font-bold ${editorTool === 'snow' ? 'border-2 border-white' : 'border border-gray-600'}`} style={{backgroundColor: '#ffffff', color: '#000'}}>Snow</button>
              </div>
+          </div>
+          
+          <div className="flex flex-col gap-2">
+            <label className="text-amber-300 font-mono text-xs">Admin Override Secret</label>
+            <input 
+              type="password" 
+              value={devEditSecret}
+              onChange={(e) => setDevEditSecret(e.target.value)}
+              placeholder="Leave blank if admin..."
+              className="bg-gray-900 border border-amber-500/50 rounded px-2 py-1 text-xs text-amber-400 w-full outline-none focus:border-amber-400"
+            />
           </div>
           
           <div className="mt-2 text-xs text-amber-500/70 font-mono leading-tight">
