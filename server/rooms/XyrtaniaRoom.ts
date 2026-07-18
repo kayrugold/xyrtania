@@ -110,7 +110,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
             const rKey = `${rx}_${rz}`;
             if (!this.terrainRegions.has(rKey)) this.terrainRegions.set(rKey, new Map());
             
-            const region = this.terrainRegions.get(rKey);
+            const region = this.terrainRegions.get(rKey)!;
             const key = `${edit.vx}_${edit.vz}`;
             const existing = region.get(key) || { vx: edit.vx, vz: edit.vz };
             if (edit.h !== undefined) existing.h = edit.h;
@@ -127,7 +127,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
         
         // Broadcast the edit ONLY to clients who have loaded the affected regions
         const binaryEdits = encodeEdits(data.edits);
-        for (const c of this.clients) {
+        for (let i = 0; i < this.clients.length; i++) { const c = this.clients[i];
             if (c.sessionId === client.sessionId) continue;
             
             let shouldSend = false;
@@ -262,7 +262,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
         
         let savedCount = 0;
         for (const rKey of regionsToSave) {
-            const region = this.terrainRegions.get(rKey);
+            const region = this.terrainRegions.get(rKey)!;
             if (!region) continue;
             
             try {
@@ -329,13 +329,13 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
                       }
 
                       if (!this.terrainRegions.has(rKey)) this.terrainRegions.set(rKey, new Map());
-                      const region = this.terrainRegions.get(rKey);
+                      const region = this.terrainRegions.get(rKey)!;
                       for (const edit of edits) {
                           region.set(`${edit.vx}_${edit.vz}`, edit);
                           totalEdits++;
                       }
                   } catch (err) {
-                      console.error(`Failed to decode region ${rKey}, skipping...`, err.message);
+                      console.error(`Failed to decode region ${rKey}, skipping...`, (err as Error).message);
                   }
               }
               console.log(`Loaded ${totalEdits} terrain edits from Cloudflare D1 across ${json.regions.length} regions`);
@@ -372,7 +372,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
     // Flush pending saves immediately
     const regionsToSave = Array.from(this.pendingRegionSaves);
     for (const rKey of regionsToSave) {
-        const region = this.terrainRegions.get(rKey);
+        const region = this.terrainRegions.get(rKey)!;
         if (!region) continue;
         try {
             const data = Array.from(region.values());
