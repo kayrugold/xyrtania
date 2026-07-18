@@ -42,7 +42,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
     this.loadTerrainFromCloudflare();
     
     this.adminKeys = process.env.ADMIN_KEYS ? process.env.ADMIN_KEYS.split(',') : [];
-    this.devEditSecret = process.env.DEV_EDIT_SECRET || "dev-secret";
+    this.devEditSecret = process.env.DEV_EDIT_SECRET || "my-super-secret-string";
     
     const adminKeys = this.adminKeys;
     const devEditSecret = this.devEditSecret;
@@ -181,11 +181,10 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
                 const existingClient = this.clients.find(c => c.sessionId === sessionId);
                 if (existingClient) {
                     existingClient.leave(4000, "Joined from another session");
-                } else {
-                    // If client object isn't found for some reason, clean up manually
-                    this.state.players.delete(sessionId);
-                    this.playerLoadedRegions.delete(sessionId);
                 }
+                // ALWAYS clean up immediately from state so the new connection doesn't see them as a ghost
+                this.state.players.delete(sessionId);
+                this.playerLoadedRegions.delete(sessionId);
             }
         }
     }
@@ -274,7 +273,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
                 
                 const workerUrl = process.env.VITE_CF_WORKER_URL || 'https://xyrtania.andy-596.workers.dev/api/terrain/sync';
                 
-                await fetch(workerUrl, {
+                const res = await fetch(workerUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -283,6 +282,10 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
                         secret: this.devEditSecret // Use shared secret
                     })
                 });
+                if (!res.ok) {
+                    const text = await res.text();
+                    throw new Error(`HTTP ${res.status}: ${text}`);
+                }
                 savedCount++;
             } catch (e) {
                 console.error(`Failed to save region ${rKey} to Cloudflare`, e);
@@ -362,7 +365,33 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
     this.playerLoadedRegions.delete(client.sessionId);
   }
 
-  onDispose() {
+  async onDispose() {
     console.log("room", this.roomId, "disposing...");
+    if (this.saveTimeout) clearTimeout(this.saveTimeout);
+    
+    // Flush pending saves immediately
+    const regionsToSave = Array.from(this.pendingRegionSaves);
+    for (const rKey of regionsToSave) {
+        const region = this.terrainRegions.get(rKey);
+        if (!region) continue;
+        try {
+            const data = Array.from(region.values());
+            const compressed = encodeEdits(data);
+            const base64Data = Buffer.from(compressed).toString('base64');
+            const workerUrl = process.env.VITE_CF_WORKER_URL || 'https://xyrtania.andy-596.workers.dev/api/terrain/sync';
+            await fetch(workerUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    regionId: rKey,
+                    data: base64Data,
+                    secret: this.devEditSecret
+                })
+            });
+            console.log("Flushed region to Cloudflare on dispose:", rKey);
+        } catch (e) {
+            console.error("Failed to flush region on dispose:", e);
+        }
+    }
   }
 }

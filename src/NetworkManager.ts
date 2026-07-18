@@ -112,7 +112,12 @@ export class NetworkManager {
   }
 
   private async connectToP2P() {
+    
+    for (const peerId of this.peers.keys()) {
+        if (this.onPeerLeave) this.onPeerLeave(peerId);
+    }
     this.peers.clear();
+
     if (this.onPeersChange) this.onPeersChange(0);
     this.status = 'reconnecting';
     if (this.onStatusChange) this.onStatusChange(this.status);
@@ -219,7 +224,12 @@ export class NetworkManager {
   }
 
   private async connectToServer() {
-    this.peers.clear(); // Clear any old stale peer references from previous connections
+    
+    for (const peerId of this.peers.keys()) {
+        if (this.onPeerLeave) this.onPeerLeave(peerId);
+    }
+    this.peers.clear();
+ // Clear any old stale peer references from previous connections
     if (this.onPeersChange) this.onPeersChange(0);
     this.status = 'reconnecting';
     if (this.onStatusChange) this.onStatusChange(this.status);
@@ -400,7 +410,16 @@ export class NetworkManager {
           console.log("Left room with code:", code);
           this.status = 'disconnected';
           this.roomId = undefined;
-          this.peers.clear();
+          // Clear visual peers
+          for (const peerId of this.peers.keys()) {
+              if (this.onPeerLeave) this.onPeerLeave(peerId);
+          }
+          
+    for (const peerId of this.peers.keys()) {
+        if (this.onPeerLeave) this.onPeerLeave(peerId);
+    }
+    this.peers.clear();
+
           if (this.onPeersChange) this.onPeersChange(0);
           if (this.onStatusChange) this.onStatusChange(this.status);
           // 1000 is normal/consented close
@@ -429,6 +448,13 @@ export class NetworkManager {
       this.status = 'reconnecting';
       if (this.onStatusChange) this.onStatusChange(this.status);
       console.log(`Lost connection unexpectedly. Attempting seamless reconnection using reconnection token...`);
+      
+      // Clear visual peers to prevent ghosts of players who left while we were disconnected
+      for (const peerId of this.peers.keys()) {
+          if (this.onPeerLeave) this.onPeerLeave(peerId);
+      }
+      this.peers.clear();
+      if (this.onPeersChange) this.onPeersChange(0);
 
       let attempts = 0;
       const maxAttempts = 10; // increase maxAttempts for mobile reconnection resiliency
