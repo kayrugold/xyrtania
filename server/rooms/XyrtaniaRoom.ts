@@ -127,8 +127,8 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
         
         // Broadcast the edit ONLY to clients who have loaded the affected regions
         const binaryEdits = encodeEdits(data.edits);
-        for (let i = 0; i < this.clients.length; i++) { const c = this.clients[i];
-            if (c.sessionId === client.sessionId) continue;
+        this.clients.forEach(c => {
+            if (c.sessionId === client.sessionId) return;
             
             let shouldSend = false;
             const loaded = this.playerLoadedRegions.get(c.sessionId);
@@ -144,7 +144,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
             if (shouldSend) {
                 c.send("TERRAIN_EDIT_BIN", binaryEdits);
             }
-        }
+        });
         
         this.scheduleSave();
       } else {
@@ -335,7 +335,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
                           totalEdits++;
                       }
                   } catch (err) {
-                      console.error(`Failed to decode region ${rKey}, skipping...`, (err as Error).message);
+                      console.error(`Failed to decode region ${rKey}, skipping...`, err);
                   }
               }
               console.log(`Loaded ${totalEdits} terrain edits from Cloudflare D1 across ${json.regions.length} regions`);

@@ -246,6 +246,24 @@ export class NetworkManager {
 
       const savedToken = localStorage.getItem('xyrtania_reconnection_token');
 
+      const joinOptions = {
+          displayName: initialDisplayName,
+          avatarId: initialAvatarId,
+          playerId: session.playerId
+      };
+
+      const tryJoin = async () => {
+          try {
+              return await this.client.joinOrCreate("xyrtania_room", joinOptions);
+          } catch (e) {
+              if (e.message && e.message.includes("seat reservation expired")) {
+                  console.log("Seat reservation expired, retrying join...");
+                  return await this.client.joinOrCreate("xyrtania_room", joinOptions);
+              }
+              throw e;
+          }
+      };
+
       let room: Room;
       if (savedToken) {
         try {
@@ -254,19 +272,10 @@ export class NetworkManager {
           console.log("Successfully reconnected using stored session credentials!");
         } catch (reconnectErr) {
           console.warn("Silent reconnection failed, falling back to join or create:", reconnectErr);
-          localStorage.removeItem('xyrtania_reconnection_token');
-          room = await this.client.joinOrCreate("xyrtania_room", {
-              displayName: initialDisplayName,
-              avatarId: initialAvatarId,
-              playerId: session.playerId
-          });
+          room = await tryJoin();
         }
       } else {
-        room = await this.client.joinOrCreate("xyrtania_room", {
-            displayName: initialDisplayName,
-            avatarId: initialAvatarId,
-            playerId: session.playerId
-        });
+        room = await tryJoin();
       }
 
       if (this.isDisconnected) {
