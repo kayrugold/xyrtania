@@ -60,6 +60,8 @@ export const AccountUI: React.FC<AccountUIProps> = ({
       setIsSetupComplete(true);
       localStorage.setItem('xyrtania_setup_complete', 'true');
       setIsPanelOpen(false);
+      // Reload game cleanly to spawn the player at their restored coordinates!
+      window.location.reload();
     } else {
       setErrorMsg('Invalid 12-word passphrase.');
     }

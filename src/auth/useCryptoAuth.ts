@@ -38,6 +38,24 @@ export function useCryptoAuth() {
              if (res.character.torsoVisible) localStorage.setItem('xy_torsoVisible', res.character.torsoVisible);
              if (res.character.morphTargets) localStorage.setItem('xy_morphTargets', res.character.morphTargets);
              if (res.character.headStyle) localStorage.setItem('xy_headStyle', res.character.headStyle);
+
+             // Restore player coordinates from database if they exist
+             if (res.character.currentChunk && res.character.currentChunk.includes(',')) {
+               const parts = res.character.currentChunk.split(',');
+               if (parts.length === 3) {
+                 const hasLocalCoords = localStorage.getItem('xyrtania_last_x') !== null;
+                 localStorage.setItem('xyrtania_last_x', parts[0]);
+                 localStorage.setItem('xyrtania_last_y', parts[1]);
+                 localStorage.setItem('xyrtania_last_z', parts[2]);
+
+                 // If we had no local coordinates but we just fetched them from the database,
+                 // reload the page once to cleanly spawn the player at those coordinates!
+                 if (!hasLocalCoords) {
+                   console.log("Restored missing player coordinates from database, reloading game to position player...");
+                   window.location.reload();
+                 }
+               }
+             }
           }
         } catch (e) {
           console.warn('Failed to fetch character data:', e);
@@ -75,6 +93,16 @@ export function useCryptoAuth() {
           if (res.character.torsoVisible) localStorage.setItem('xy_torsoVisible', res.character.torsoVisible);
           if (res.character.morphTargets) localStorage.setItem('xy_morphTargets', res.character.morphTargets);
           if (res.character.headStyle) localStorage.setItem('xy_headStyle', res.character.headStyle);
+
+          // Restore coordinates from DB during recovery
+          if (res.character.currentChunk && res.character.currentChunk.includes(',')) {
+            const parts = res.character.currentChunk.split(',');
+            if (parts.length === 3) {
+              localStorage.setItem('xyrtania_last_x', parts[0]);
+              localStorage.setItem('xyrtania_last_y', parts[1]);
+              localStorage.setItem('xyrtania_last_z', parts[2]);
+            }
+          }
         }
       } catch(e) {
         console.warn('Failed to fetch recovered character', e);
@@ -104,6 +132,13 @@ export function useCryptoAuth() {
     stats.morphTargets = localStorage.getItem('xy_morphTargets');
     stats.headStyle = localStorage.getItem('xy_headStyle');
 
+    // Retrieve latest client coordinates and inject into Cloudflare sync request
+    const lastX = localStorage.getItem('xyrtania_last_x');
+    const lastY = localStorage.getItem('xyrtania_last_y');
+    const lastZ = localStorage.getItem('xyrtania_last_z');
+    if (lastX !== null && lastY !== null && lastZ !== null) {
+      stats.currentChunk = `${parseFloat(lastX).toFixed(3)},${parseFloat(lastY).toFixed(3)},${parseFloat(lastZ).toFixed(3)}`;
+    }
     
     // Auto-update display name if passed
     if (stats.displayName) {

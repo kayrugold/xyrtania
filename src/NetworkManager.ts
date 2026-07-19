@@ -41,6 +41,7 @@ export class NetworkManager {
   
   private lastKnownState?: PlayerState;
   private lastSentAnimation?: string;
+  private _lastPositionSaveTime: number = 0;
 
   public get sessionId(): string | undefined {
     if (this.connectionMode !== 'p2p') {
@@ -246,11 +247,21 @@ export class NetworkManager {
 
       const savedToken = localStorage.getItem('xyrtania_reconnection_token');
 
-      const joinOptions = {
+      const savedXStr = localStorage.getItem('xyrtania_last_x');
+      const savedYStr = localStorage.getItem('xyrtania_last_y');
+      const savedZStr = localStorage.getItem('xyrtania_last_z');
+
+      const joinOptions: any = {
           displayName: initialDisplayName,
           avatarId: initialAvatarId,
           playerId: session.playerId
       };
+
+      if (savedXStr !== null && savedYStr !== null && savedZStr !== null) {
+          joinOptions.x = parseFloat(savedXStr);
+          joinOptions.y = parseFloat(savedYStr);
+          joinOptions.z = parseFloat(savedZStr);
+      }
 
       const tryJoin = async () => {
           try {
@@ -553,6 +564,16 @@ export class NetworkManager {
 
   public broadcastState(state: PlayerState) {
     this.lastKnownState = state;
+    
+    if (state.position && typeof state.position.x === 'number') {
+      const now = Date.now();
+      if (now - this._lastPositionSaveTime > 1500) {
+        localStorage.setItem('xyrtania_last_x', state.position.x.toFixed(3));
+        localStorage.setItem('xyrtania_last_y', state.position.y.toFixed(3));
+        localStorage.setItem('xyrtania_last_z', state.position.z.toFixed(3));
+        this._lastPositionSaveTime = now;
+      }
+    }
     
     if (this.connectionMode !== 'p2p') {
       if (this.room) {

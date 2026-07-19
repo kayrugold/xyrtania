@@ -191,9 +191,9 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
     const player = new Player();
     player.id = client.sessionId;
     player.playerId = options.playerId || "";
-    player.x = 0;
-    player.y = 0;
-    player.z = 0;
+    player.x = typeof options.x === "number" ? options.x : 0;
+    player.y = typeof options.y === "number" ? options.y : 0;
+    player.z = typeof options.z === "number" ? options.z : 0;
     player.rotation = 0;
     player.avatarId = options.avatarId || "";
     player.displayName = options.displayName || "Anonymous";

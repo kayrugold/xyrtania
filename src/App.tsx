@@ -352,8 +352,15 @@ export default function App() {
     // We will await tree prototype loading before generation in a detached async block
 
     // Player State Tracker
+    const savedXStr = localStorage.getItem('xyrtania_last_x');
+    const savedYStr = localStorage.getItem('xyrtania_last_y');
+    const savedZStr = localStorage.getItem('xyrtania_last_z');
+    const initX = savedXStr !== null ? parseFloat(savedXStr) : 0;
+    const initY = savedYStr !== null ? parseFloat(savedYStr) : 0;
+    const initZ = savedZStr !== null ? parseFloat(savedZStr) : 0;
+
     const state: PlayerState = {
-      position: new THREE.Vector3(0, 0, 0),
+      position: new THREE.Vector3(initX, initY, initZ),
       velocity: new THREE.Vector3(0, 0, 0),
       direction: 0,
       speed: 0,
@@ -366,7 +373,7 @@ export default function App() {
 
     // Shared Group containing both the Explorer character and the custom loaded mounts
     const playerRootGroup = new THREE.Group();
-    playerRootGroup.position.set(0, 0, 0);
+    playerRootGroup.position.set(initX, initY, initZ);
     scene.add(playerRootGroup);
 
     // Explorer Character Mesh
