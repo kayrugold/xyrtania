@@ -279,7 +279,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
                     body: JSON.stringify({
                         regionId: rKey,
                         data: base64Data,
-                        secret: this.devEditSecret // Use shared secret
+                        secret: 'my-super-secret-string' // Use shared secret
                     })
                 });
                 if (!res.ok) {
@@ -385,7 +385,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
                 body: JSON.stringify({
                     regionId: rKey,
                     data: base64Data,
-                    secret: this.devEditSecret
+                    secret: 'my-super-secret-string'
                 })
             });
             console.log("Flushed region to Cloudflare on dispose:", rKey);
