@@ -255,9 +255,11 @@ export class NetworkManager {
       const tryJoin = async () => {
           try {
               return await this.client.joinOrCreate("xyrtania_room", joinOptions);
-          } catch (e) {
-              if (e.message && e.message.includes("seat reservation expired")) {
-                  console.log("Seat reservation expired, retrying join...");
+          } catch (e: any) {
+              const errorMsg = e instanceof Error ? e.message : String(e);
+              if (errorMsg.toLowerCase().includes("seat reservation expired") || errorMsg.toLowerCase().includes("expired")) {
+                  console.log("Seat reservation expired, clearing token and retrying joinOrCreate immediately...");
+                  localStorage.removeItem('xyrtania_reconnection_token');
                   return await this.client.joinOrCreate("xyrtania_room", joinOptions);
               }
               throw e;
@@ -270,8 +272,9 @@ export class NetworkManager {
           console.log(`Attempting silent reconnect using stored reconnection token...`);
           room = await this.client.reconnect(savedToken);
           console.log("Successfully reconnected using stored session credentials!");
-        } catch (reconnectErr) {
-          console.warn("Silent reconnection failed, falling back to join or create:", reconnectErr);
+        } catch (reconnectErr: any) {
+          console.warn("Silent reconnection failed, clearing token and falling back to join or create:", reconnectErr);
+          localStorage.removeItem('xyrtania_reconnection_token');
           room = await tryJoin();
         }
       } else {
@@ -300,6 +303,17 @@ export class NetworkManager {
       if (this.onStatusChange) this.onStatusChange(this.status);
       if (!this.isDisconnected) {
           console.warn("Colyseus connection unavailable:", e?.message || e);
+          localStorage.removeItem('xyrtania_reconnection_token');
+
+          const errorMsg = e instanceof Error ? e.message : String(e);
+          if (errorMsg.toLowerCase().includes("seat reservation expired") || errorMsg.toLowerCase().includes("expired") || errorMsg.toLowerCase().includes("unavailable")) {
+              console.log("Encountered connection/reservation failure. Retrying clean connection in 1.5s...");
+              setTimeout(() => {
+                  if (!this.isDisconnected && this.status === 'disconnected') {
+                      this.connectToServer();
+                  }
+              }, 1500);
+          }
       }
     }
   }

@@ -1277,8 +1277,8 @@ export default function App() {
            const mx = e.movementX || 0;
            const my = e.movementY || 0;
            const panSpeed = editorCameraZoom * 0.003;
-           editorCameraTargetRef.current.x -= mx * panSpeed;
-           editorCameraTargetRef.current.z -= my * panSpeed;
+           editorCameraTargetRef.current.x -= (Math.cos(editorCameraYaw) * mx + Math.sin(editorCameraYaw) * my) * panSpeed;
+           editorCameraTargetRef.current.z -= (-Math.sin(editorCameraYaw) * mx + Math.cos(editorCameraYaw) * my) * panSpeed;
         } else {
            handlePointerMove(e.clientX, e.clientY, null);
         }
@@ -1303,6 +1303,7 @@ export default function App() {
 
     let lastTouchDist = 0;
     let lastTouchCenter = { x: 0, y: 0 };
+    let lastTouchAngle: number | null = null;
 
     const onTouchStart = (e: TouchEvent) => {
       isTouchMode = true;
@@ -1315,6 +1316,7 @@ export default function App() {
           const t2 = e.touches[1];
           lastTouchDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
           lastTouchCenter = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
+          lastTouchAngle = Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX);
           return;
       }
       
@@ -1341,9 +1343,23 @@ export default function App() {
           const dx = center.x - lastTouchCenter.x;
           const dy = center.y - lastTouchCenter.y;
           const panSpeed = editorCameraZoom * 0.003;
-          editorCameraTargetRef.current.x -= dx * panSpeed;
-          editorCameraTargetRef.current.z -= dy * panSpeed;
+          editorCameraTargetRef.current.x -= (Math.cos(editorCameraYaw) * dx + Math.sin(editorCameraYaw) * dy) * panSpeed;
+          editorCameraTargetRef.current.z -= (-Math.sin(editorCameraYaw) * dx + Math.cos(editorCameraYaw) * dy) * panSpeed;
           lastTouchCenter = center;
+
+          const angle = Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX);
+          if (lastTouchAngle !== null) {
+              let dAngle = angle - lastTouchAngle;
+              while (dAngle < -Math.PI) dAngle += Math.PI * 2;
+              while (dAngle > Math.PI) dAngle -= Math.PI * 2;
+              // If the twist is significant, apply it
+              if (Math.abs(dAngle) > 0.01) {
+                  editorCameraYaw -= dAngle;
+                  lastTouchAngle = angle;
+              }
+          } else {
+              lastTouchAngle = angle;
+          }
           
           return;
       }
@@ -1369,6 +1385,11 @@ export default function App() {
       }
     };
 
+    const onEditorRotate = (e: any) => {
+        editorCameraYaw += (e as CustomEvent).detail;
+    };
+    window.addEventListener('editorRotate', onEditorRotate);
+    
     const onContextMenu = (e: MouseEvent) => {
         if (isEditorModeRef.current) {
             e.preventDefault();
@@ -2496,6 +2517,7 @@ export default function App() {
 
       el.removeEventListener('mousedown', onMouseDown);
       el.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('editorRotate', onEditorRotate);
       window.removeEventListener('mouseup', onWindowMouseUp);
 
       el.removeEventListener('touchstart', onTouchStart);
@@ -2713,6 +2735,14 @@ export default function App() {
                  <button onClick={() => setEditorTool('raise')} className={`flex-1 py-1 rounded text-xs font-mono ${editorTool === 'raise' ? 'bg-amber-600 text-white' : 'bg-gray-800 text-amber-400 hover:bg-gray-700'}`}>Raise</button>
                  <button onClick={() => setEditorTool('lower')} className={`flex-1 py-1 rounded text-xs font-mono ${editorTool === 'lower' ? 'bg-amber-600 text-white' : 'bg-gray-800 text-amber-400 hover:bg-gray-700'}`}>Lower</button>
                  <button onClick={() => setEditorTool('flatten')} className={`flex-1 py-1 rounded text-xs font-mono ${editorTool === 'flatten' ? 'bg-amber-600 text-white' : 'bg-gray-800 text-amber-400 hover:bg-gray-700'}`}>Flat</button>
+             </div>
+          </div>
+          
+          <div className="flex flex-col gap-2">
+             <label className="text-amber-300 font-mono text-xs">Camera Rotation</label>
+             <div className="flex gap-2">
+                 <button onPointerDown={() => window.dispatchEvent(new CustomEvent('editorRotate', {detail: Math.PI/8}))} className="flex-1 py-2 bg-gray-800 text-amber-400 hover:bg-gray-700 rounded text-lg">↶</button>
+                 <button onPointerDown={() => window.dispatchEvent(new CustomEvent('editorRotate', {detail: -Math.PI/8}))} className="flex-1 py-2 bg-gray-800 text-amber-400 hover:bg-gray-700 rounded text-lg">↷</button>
              </div>
           </div>
           
