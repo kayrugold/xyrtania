@@ -9,6 +9,9 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.get("/api/health", (_req, res) => {
+  res.json({ status: "ok", service: "xyrtania-server" });
+});
 
 const server = new Server({
   server: createServer(app),
