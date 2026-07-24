@@ -126,13 +126,19 @@ export default function App() {
     else localStorage.removeItem('xy_uploadedCharName');
   }, [torsoVisible, morphTargets, headStyle, uploadedHeadName, uploadedCharName]);
   const [uploadedTreeName, setUploadedTreeName] = useState<string | null>(null);
-  const [graphicsQuality, setGraphicsQuality] = useState<'high' | 'medium' | 'low' | 'potato'>('potato');
+  const [graphicsQuality, setGraphicsQuality] = useState<'high' | 'medium' | 'low' | 'potato'>(() => {
+    const savedQuality = localStorage.getItem('xyrtania_quality');
+    return savedQuality === 'high' || savedQuality === 'medium' || savedQuality === 'low' || savedQuality === 'potato'
+      ? savedQuality
+      : 'medium';
+  });
   const [shadowsEnabled, setShadowsEnabled] = useState<boolean>(true);
   const [shadowQuality, setShadowQuality] = useState<'low' | 'medium' | 'high'>('low');
 
   const graphicsQualityRef = useRef(graphicsQuality);
   useEffect(() => {
     graphicsQualityRef.current = graphicsQuality;
+    localStorage.setItem('xyrtania_quality', graphicsQuality);
     window.dispatchEvent(new Event('resize'));
   }, [graphicsQuality]);
 
@@ -3204,7 +3210,7 @@ export default function App() {
               <span>Graphics Quality</span>
               <span className="text-[10px] text-cyan-400 uppercase font-bold">{graphicsQuality}</span>
             </label>
-            <div className="grid grid-cols-3 gap-1 bg-black/40 p-1 rounded border border-cyan-500/20">
+            <div className="grid grid-cols-4 gap-1 bg-black/40 p-1 rounded border border-cyan-500/20">
               {(['potato', 'low', 'medium', 'high'] as const).map((q) => (
                 <button
                   key={q}
