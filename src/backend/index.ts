@@ -91,9 +91,8 @@ export default {
         const body = await request.json();
         const { regionId, data, secret } = body;
         
-        // Very basic shared secret for server-to-server auth
-        // In production, pass a proper SERVER_SECRET via wrangler.toml env var
-        if (!secret || (secret !== env.SERVER_SECRET && secret !== 'dev-secret' && secret !== 'my-super-secret-string')) {
+        // Server-to-server writes fail closed unless the deployed Worker secret matches.
+        if (!env.SERVER_SECRET || !secret || secret !== env.SERVER_SECRET) {
              return new Response(JSON.stringify({ error: 'Unauthorized server access' }), { status: 401 });
         }
 

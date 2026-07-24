@@ -33,16 +33,17 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
   private saveTimeout: any = null;
   private terrainRegions = new Map<string, Map<string, any>>();
   private playerLoadedRegions = new Map<string, Set<string>>();
+  private terrainLoadPromise: Promise<void> = Promise.resolve();
   private readonly REGION_SIZE = 1000;
 
   onCreate(options: any) {
     this.setState(new XyrtaniaState());
 
     // Asynchronously load from Cloudflare D1
-    this.loadTerrainFromCloudflare();
+    this.terrainLoadPromise = this.loadTerrainFromCloudflare();
     
     this.adminKeys = process.env.ADMIN_KEYS ? process.env.ADMIN_KEYS.split(',') : [];
-    this.devEditSecret = process.env.DEV_EDIT_SECRET || "my-super-secret-string";
+    this.devEditSecret = process.env.DEV_EDIT_SECRET || "";
     
     const adminKeys = this.adminKeys;
     const devEditSecret = this.devEditSecret;
@@ -69,6 +70,13 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
       }
     });
 
+    // The client requests terrain only after its message listeners are ready.
+    // Waiting for the D1 load here prevents new rooms from marking empty
+    // regions as already delivered during Render cold starts.
+    this.onMessage("REQUEST_TERRAIN", (client) => {
+      void this.sendTerrainSnapshot(client);
+    });
+
 
     this.onMessage("verify_secret", (client, data) => {
       const isDevOverride = data.secret && data.secret.trim() === this.devEditSecret.trim();
@@ -93,11 +101,8 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
         return lowerKey === lowerPlayerId;
       });
       const isDevOverride = data.secret && data.secret.trim() === devEditSecret.trim();
-      console.log('TERRAIN_EDIT check:', {
+      console.log('TERRAIN_EDIT authorization:', {
         playerId: player.playerId,
-        adminKeys,
-        devEditSecret,
-        providedSecret: data.secret,
         isAdmin,
         isDevOverride
       });
@@ -150,12 +155,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
       } else {
         console.warn(`Unauthorized terrain edit attempt by ${player.playerId}`);
         client.send("terrain_edit_error", {
-            playerId: player.playerId,
-            providedSecret: data.secret,
-            expectedSecret: devEditSecret,
-            adminKeys,
-            isAdmin,
-            isDevOverride
+            error: "Terrain editing requires administrator access."
         });
       }
     });
@@ -217,7 +217,16 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
     client.send("admin_status", { isAdmin });
 
     this.playerLoadedRegions.set(client.sessionId, new Set());
-    this.checkPlayerRegions(client, player.x, player.z);
+  }
+
+  private async sendTerrainSnapshot(client: Client) {
+      await this.terrainLoadPromise;
+      const player = this.state.players.get(client.sessionId);
+      const loaded = this.playerLoadedRegions.get(client.sessionId);
+      if (!player || !loaded) return;
+      loaded.clear();
+      this.checkPlayerRegions(client, player.x, player.z);
+      client.send("TERRAIN_READY");
   }
 
   private checkPlayerRegions(client: Client, x: number, z: number) {
@@ -272,6 +281,10 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
                 const base64Data = Buffer.from(compressed).toString('base64');
                 
                 const workerUrl = process.env.VITE_CF_WORKER_URL || 'https://xyrtania.andy-596.workers.dev/api/terrain/sync';
+                const cloudflareSecret = process.env.CF_SERVER_SECRET;
+                if (!cloudflareSecret) {
+                    throw new Error('CF_SERVER_SECRET is not configured; terrain save refused');
+                }
                 
                 const res = await fetch(workerUrl, {
                     method: 'POST',
@@ -279,7 +292,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
                     body: JSON.stringify({
                         regionId: rKey,
                         data: base64Data,
-                        secret: 'my-super-secret-string' // Use shared secret
+                        secret: cloudflareSecret
                     })
                 });
                 if (!res.ok) {
@@ -379,13 +392,17 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
             const compressed = encodeEdits(data);
             const base64Data = Buffer.from(compressed).toString('base64');
             const workerUrl = process.env.VITE_CF_WORKER_URL || 'https://xyrtania.andy-596.workers.dev/api/terrain/sync';
+            const cloudflareSecret = process.env.CF_SERVER_SECRET;
+            if (!cloudflareSecret) {
+                throw new Error('CF_SERVER_SECRET is not configured; terrain flush refused');
+            }
             await fetch(workerUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     regionId: rKey,
                     data: base64Data,
-                    secret: 'my-super-secret-string'
+                    secret: cloudflareSecret
                 })
             });
             console.log("Flushed region to Cloudflare on dispose:", rKey);

@@ -34,6 +34,7 @@ export class NetworkManager {
   public onPeerAnimationStateChange?: (id: string, animationState: string) => void;
   public onPeerDisplayNameChange?: (id: string, displayName: string) => void;
   public onTerrainEdit?: (edits: any[]) => void;
+  public onTerrainReady?: () => void;
   public onAdminStatus?: (isAdmin: boolean) => void;
   
   public onStatusChange?: (status: 'connected' | 'disconnected' | 'reconnecting', roomId?: string) => void;
@@ -51,7 +52,7 @@ export class NetworkManager {
     }
   }
 
-  constructor(appId: string, roomName: string) {
+  constructor(appId: string, roomName: string, autoConnect = true) {
     this.appId = appId;
     this.roomName = roomName;
     
@@ -67,7 +68,11 @@ export class NetworkManager {
       this.connectionMode = savedMode;
     }
     
-    if (savedMode === 'p2p') {
+    if (!autoConnect) {
+      this.connectionMode = 'colyseus_render';
+      this.serverEndpoint = 'wss://xyrtania-server.onrender.com';
+      this.client = new Client(this.serverEndpoint);
+    } else if (savedMode === 'p2p') {
       this.connectionMode = 'p2p';
       // Fallback endpoint value just in case
       this.serverEndpoint = 'wss://xyrtania-server.onrender.com';
@@ -80,13 +85,23 @@ export class NetworkManager {
       this.client = new Client(this.serverEndpoint);
       this.connectToServer();
     } else {
-      // Default to Local Colyseus Server!
-      this.connectionMode = 'colyseus_local';
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      this.serverEndpoint = `${protocol}//${window.location.host}`;
+      // The persistent multiplayer world is hosted by Render.
+      this.connectionMode = 'colyseus_render';
+      this.serverEndpoint = 'wss://xyrtania-server.onrender.com';
       this.client = new Client(this.serverEndpoint);
       this.connectToServer();
     }
+  }
+
+  public connectToRender() {
+    if (this.status === 'connected' && this.connectionMode === 'colyseus_render') return;
+    this.disconnect();
+    this.connectionMode = 'colyseus_render';
+    this.isDisconnected = false;
+    localStorage.setItem('xyrtania_connection_mode', 'colyseus_render');
+    this.serverEndpoint = 'wss://xyrtania-server.onrender.com';
+    this.client = new Client(this.serverEndpoint);
+    this.connectToServer();
   }
 
   public setConnectionMode(mode: 'colyseus_render' | 'colyseus_local' | 'p2p') {
@@ -308,6 +323,8 @@ export class NetworkManager {
       console.log("Joined colyseus room!", this.room.roomId);
 
       this.setupRoomListeners(room);
+      // Listeners must exist before the server streams the D1 terrain snapshot.
+      room.send("REQUEST_TERRAIN");
 
     } catch (e: any) {
       this.status = 'disconnected';
@@ -316,15 +333,12 @@ export class NetworkManager {
           console.warn("Colyseus connection unavailable:", e?.message || e);
           localStorage.removeItem('xyrtania_reconnection_token');
 
-          const errorMsg = e instanceof Error ? e.message : String(e);
-          if (errorMsg.toLowerCase().includes("seat reservation expired") || errorMsg.toLowerCase().includes("expired") || errorMsg.toLowerCase().includes("unavailable")) {
-              console.log("Encountered connection/reservation failure. Retrying clean connection in 1.5s...");
-              setTimeout(() => {
-                  if (!this.isDisconnected && this.status === 'disconnected') {
-                      this.connectToServer();
-                  }
-              }, 1500);
-          }
+          console.log("Render is unavailable or waking. Retrying clean connection in 2s...");
+          setTimeout(() => {
+              if (!this.isDisconnected && this.status === 'disconnected') {
+                  this.connectToServer();
+              }
+          }, 2000);
       }
     }
   }
@@ -352,6 +366,9 @@ export class NetworkManager {
           const edits = decodeEdits(binaryData);
           this.onTerrainEdit(edits);
         }
+      });
+      room.onMessage("TERRAIN_READY", () => {
+        if (this.onTerrainReady) this.onTerrainReady();
       });
       
       // Persist reconnection token for mobile/reload silent reconnection

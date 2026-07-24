@@ -6,8 +6,27 @@ import { PlayerState, JumpPhase, resolveAssetUrl } from './types';
 import { CharacterAnimator } from './CharacterAnimator';
 import { NetworkManager } from './NetworkManager';
 import { AccountUI } from './components/AccountUI';
+import { StartMenu } from './components/StartMenu';
 
 export default function App() {
+  const [isStartMenuActive, setIsStartMenuActive] = useState(true);
+  const isStartMenuActiveRef = useRef(true);
+  useEffect(() => {
+    isStartMenuActiveRef.current = isStartMenuActive;
+  }, [isStartMenuActive]);
+  const [isAccountRequested, setIsAccountRequested] = useState(false);
+  const [multiplayerPhase, setMultiplayerPhase] = useState<'idle' | 'waking' | 'terrain' | 'ready'>('idle');
+  const [multiplayerWaitSeconds, setMultiplayerWaitSeconds] = useState(0);
+  const multiplayerLaunchRef = useRef(false);
+  useEffect(() => {
+    if (multiplayerPhase === 'idle' || multiplayerPhase === 'ready') return;
+    const startedAt = Date.now();
+    setMultiplayerWaitSeconds(0);
+    const timer = window.setInterval(() => {
+      setMultiplayerWaitSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [multiplayerPhase === 'idle' || multiplayerPhase === 'ready']);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const joystickRef = useRef<HTMLDivElement | null>(null);
   const joystickKnobRef = useRef<HTMLDivElement | null>(null);
@@ -144,18 +163,6 @@ export default function App() {
     }
     return saved || 'colyseus_render';
   });
-
-  const handleConnectionModeChange = (mode: 'colyseus_render' | 'colyseus_local' | 'p2p') => {
-    setConnectionMode(mode);
-    if (networkManagerRef.current) {
-      networkManagerRef.current.setConnectionMode(mode);
-    }
-    if (worldGridRef.current) {
-      worldGridRef.current.heightData.clear();
-      worldGridRef.current.colorData.clear();
-      worldGridRef.current.clearChunks();
-    }
-  };
 
   // References to invoke in-game actions from absolute HTML DOM target elements
   const triggerJumpRef = useRef<() => void>(() => {});
@@ -396,7 +403,7 @@ export default function App() {
     });
 
     // --- 5. NETWORK MANAGER INITIALIZATION ---
-    const networkManager = new NetworkManager('xyrtania-world-1', 'main-room');
+    const networkManager = new NetworkManager('xyrtania-world-1', 'main-room', false);
     networkManagerRef.current = networkManager;
     
     networkManager.onAdminStatus = (status) => {
@@ -406,6 +413,15 @@ export default function App() {
       if (worldGridRef.current) {
         worldGridRef.current.applyEdits(edits);
       }
+    };
+    networkManager.onTerrainReady = () => {
+      if (!multiplayerLaunchRef.current) return;
+      multiplayerLaunchRef.current = false;
+      setMultiplayerPhase('ready');
+      window.setTimeout(() => {
+        setIsStartMenuActive(false);
+        setMultiplayerPhase('idle');
+      }, 550);
     };
     const remoteAnimators = new Map<string, CharacterAnimator>();
 
@@ -418,6 +434,9 @@ export default function App() {
       setNetStatus(status);
       setNetRoomId(roomId || null);
       setNetEndpoint(networkManager.serverEndpoint);
+      if (multiplayerLaunchRef.current && status === 'connected') {
+        setMultiplayerPhase('terrain');
+      }
     };
 
     networkManager.onPeersChange = (count) => {
@@ -1446,6 +1465,13 @@ export default function App() {
     const gameLoop = () => {
       const t0 = performance.now();
       frameId = requestAnimationFrame(gameLoop);
+
+      // The menu fully covers the playfield. Do not spend CPU/GPU time
+      // simulating or rendering the 3D world behind it.
+      if (isStartMenuActiveRef.current) {
+        clock.getDelta();
+        return;
+      }
 
       if (!isWorldGridLoaded) {
         // Still render the loading screen/empty scene
@@ -2554,19 +2580,53 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleDiagKey);
   }, []);
 
+  const enterMultiplayer = () => {
+    setIsAccountRequested(false);
+    multiplayerLaunchRef.current = true;
+    setMultiplayerPhase('waking');
+    localStorage.setItem('xyrtania_connection_mode', 'colyseus_render');
+    networkManagerRef.current?.connectToRender();
+    setConnectionMode('colyseus_render');
+  };
+
+  const cancelMultiplayerLaunch = () => {
+    multiplayerLaunchRef.current = false;
+    networkManagerRef.current?.disconnect();
+    setMultiplayerPhase('idle');
+    setMultiplayerWaitSeconds(0);
+  };
+
+  const handleMultiplayerSelection = () => {
+    if (localStorage.getItem('xyrtania_setup_complete') === 'true') {
+      enterMultiplayer();
+    } else {
+      setIsAccountRequested(true);
+    }
+  };
+
   return (
     <div className={isFakeFullscreen ? "fixed inset-0 z-[99999] w-full h-[100dvh] bg-[#050508] text-slate-300 font-sans overflow-hidden" : "w-screen h-[100dvh] bg-[#050508] text-slate-300 font-sans relative overflow-hidden"}>
       {/* Character Loading Error Banner */}
 
       {/* PWA Cryptographic Identity */}
       <AccountUI 
+        activationRequested={isAccountRequested}
+        onAccountReady={enterMultiplayer}
         netStatus={netStatus}
         netRoomId={netRoomId}
         netEndpoint={netEndpoint}
         netPeersCount={netPeersCount}
         peerNames={peerNames}
-        connectionMode={connectionMode}
-        onChangeConnectionMode={handleConnectionModeChange}
+      />
+
+      <StartMenu
+        isOpen={isStartMenuActive}
+        netStatus={netStatus}
+        netPeersCount={netPeersCount}
+        multiplayerPhase={multiplayerPhase}
+        waitSeconds={multiplayerWaitSeconds}
+        onMultiplayer={handleMultiplayerSelection}
+        onCancelMultiplayer={cancelMultiplayerLaunch}
       />
       
       {/* Gamepad Connection Overlay */}
