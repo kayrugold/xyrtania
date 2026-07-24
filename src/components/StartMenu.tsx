@@ -235,7 +235,7 @@ export function StartMenu({
                     playStoneClick(volume);
                     setOptionsOpen(true);
                   }}
-                  className="h-11 w-full [clip-path:polygon(6%_0,94%_0,100%_50%,94%_100%,6%_100%,0_50%)] border border-slate-500/50 bg-black/65 font-serif tracking-[0.16em] text-slate-200 transition-colors hover:border-amber-400/70 hover:text-amber-100"
+                  className="relative h-11 w-full overflow-hidden [clip-path:polygon(6%_0,94%_0,100%_50%,94%_100%,6%_100%,0_50%)] border border-slate-500/50 bg-black/65 font-serif tracking-[0.16em] text-slate-200 transition-[border-color,color] duration-75 hover:border-amber-300/80 hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300"
                 >
                   OPTIONS
                 </button>
@@ -279,8 +279,10 @@ export function StartMenu({
                     animate={{ opacity: bootProgress === 100 ? 1 : 0.35 }}
                     disabled={bootProgress !== 100}
                     onClick={enterExperience}
-                    className="mt-8 min-h-14 w-full max-w-sm [clip-path:polygon(7%_0,93%_0,100%_50%,93%_100%,7%_100%,0_50%)] border border-amber-400/65 bg-black/75 px-8 font-serif tracking-[0.2em] text-amber-100 transition-[border-color,background-color,color,box-shadow,transform] duration-200 enabled:hover:border-amber-200 enabled:hover:bg-amber-950/55 enabled:hover:text-white enabled:hover:shadow-[0_0_30px_rgba(251,146,60,.3)] enabled:active:scale-[.99] focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200 disabled:cursor-wait"
+                    className="group relative mt-8 min-h-14 w-full max-w-sm overflow-hidden [clip-path:polygon(7%_0,93%_0,100%_50%,93%_100%,7%_100%,0_50%)] border border-amber-400/65 bg-black/75 px-8 font-serif tracking-[0.2em] text-amber-100 transition-[border-color,transform] duration-75 enabled:hover:border-amber-300/85 enabled:active:scale-[.99] focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200 disabled:cursor-wait"
                   >
+                    <span className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-amber-300 to-transparent opacity-0 transition-opacity duration-75 group-hover:opacity-100 group-focus-visible:opacity-100" />
+                    <span className="pointer-events-none absolute inset-x-8 bottom-0 h-px bg-gradient-to-r from-transparent via-orange-400 to-transparent opacity-0 transition-opacity duration-75 group-hover:opacity-100 group-focus-visible:opacity-100" />
                     ENTER XYRTANIA
                     <span className="block pt-1 font-mono text-[8px] tracking-[0.22em] text-cyan-100/50">
                       {isNativeShell ? 'START MUSIC · CONTINUE' : 'START MUSIC · ENTER FULLSCREEN'}
