@@ -48,6 +48,11 @@ export const AccountUI: React.FC<AccountUIProps> = ({
   if (!session) {
     return null; 
   }
+  // New players should meet the world and its start menu first. Account
+  // creation is only mounted after Multiplayer explicitly requests it.
+  if (!isSetupComplete && !activationRequested && !isPanelOpen) {
+    return null;
+  }
 
   const handleRecover = async () => {
     const success = await recover(phraseInput);
@@ -108,7 +113,7 @@ export const AccountUI: React.FC<AccountUIProps> = ({
   };
 
   return (
-    <div className={!isSetupComplete ? "fixed inset-0 z-[999999] pointer-events-auto bg-black/80 backdrop-blur-sm flex items-center justify-center" : "absolute top-[72px] right-4 z-50 pointer-events-auto flex flex-col items-end gap-2"}>
+    <div className={!isSetupComplete && isPanelOpen ? "fixed inset-0 z-[999999] pointer-events-auto bg-black/80 backdrop-blur-sm flex items-center justify-center" : "absolute top-[72px] right-4 z-50 pointer-events-auto flex flex-col items-end gap-2"}>
       {/* Background Syncing Indicator HUD */}
       {isSyncing && (
         <div className="bg-emerald-900/80 border border-emerald-500 rounded px-3 py-1 flex items-center gap-2 shadow-[0_0_10px_rgba(16,185,129,0.5)]">

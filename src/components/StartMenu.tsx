@@ -52,6 +52,9 @@ export function StartMenu({
   const [bootProgress, setBootProgress] = useState(0);
   const [bootMessage, setBootMessage] = useState('AWAKENING FIRE AND ICE');
   const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement));
+  const isNativeShell = Boolean(
+    (window as typeof window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.()
+  ) || navigator.userAgent.includes('Electron');
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const menuLayerRef = useRef<HTMLDivElement | null>(null);
 
@@ -169,7 +172,7 @@ export function StartMenu({
   const enterExperience = () => {
     playStoneClick(volume);
     void musicRef.current?.play().catch(() => undefined);
-    if (!document.fullscreenElement) {
+    if (!isNativeShell && !document.fullscreenElement) {
       void document.documentElement.requestFullscreen().catch(() => undefined);
     }
     setBootOpen(false);
@@ -197,7 +200,7 @@ export function StartMenu({
 
           <MenuAtmosphere active={isOpen} />
 
-          {!bootOpen && (
+          {!bootOpen && !isNativeShell && (
             <button
               onClick={toggleFullscreen}
               aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
@@ -251,9 +254,9 @@ export function StartMenu({
                 initial={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.8, ease: 'easeInOut' }}
-                className="absolute inset-0 z-50 flex items-center justify-center bg-[radial-gradient(circle_at_center,rgba(15,22,32,.82),rgba(2,3,7,.97)_70%)] p-6"
+                className="absolute inset-0 z-50 flex items-center justify-center bg-[radial-gradient(circle_at_center,rgba(8,12,18,.94),rgba(0,0,0,.995)_72%)] p-6 backdrop-blur-[2px]"
               >
-                <div className="w-full max-w-lg text-center">
+                <div className="w-full max-w-lg rounded-sm border border-white/10 bg-black/65 p-8 text-center shadow-[0_0_90px_rgba(0,0,0,.95)] sm:p-10">
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 9, repeat: Infinity, ease: 'linear' }}
@@ -279,7 +282,9 @@ export function StartMenu({
                     className="mt-8 min-h-14 w-full max-w-sm [clip-path:polygon(7%_0,93%_0,100%_50%,93%_100%,7%_100%,0_50%)] border border-amber-400/65 bg-black/75 px-8 font-serif tracking-[0.2em] text-amber-100 disabled:cursor-wait"
                   >
                     ENTER XYRTANIA
-                    <span className="block pt-1 font-mono text-[8px] tracking-[0.22em] text-cyan-100/50">START MUSIC · ENTER FULLSCREEN</span>
+                    <span className="block pt-1 font-mono text-[8px] tracking-[0.22em] text-cyan-100/50">
+                      {isNativeShell ? 'START MUSIC · CONTINUE' : 'START MUSIC · ENTER FULLSCREEN'}
+                    </span>
                   </motion.button>
                 </div>
               </motion.div>
