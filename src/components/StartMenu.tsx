@@ -279,7 +279,7 @@ export function StartMenu({
                     animate={{ opacity: bootProgress === 100 ? 1 : 0.35 }}
                     disabled={bootProgress !== 100}
                     onClick={enterExperience}
-                    className="mt-8 min-h-14 w-full max-w-sm [clip-path:polygon(7%_0,93%_0,100%_50%,93%_100%,7%_100%,0_50%)] border border-amber-400/65 bg-black/75 px-8 font-serif tracking-[0.2em] text-amber-100 disabled:cursor-wait"
+                    className="mt-8 min-h-14 w-full max-w-sm [clip-path:polygon(7%_0,93%_0,100%_50%,93%_100%,7%_100%,0_50%)] border border-amber-400/65 bg-black/75 px-8 font-serif tracking-[0.2em] text-amber-100 transition-[border-color,background-color,color,box-shadow,transform] duration-200 enabled:hover:border-amber-200 enabled:hover:bg-amber-950/55 enabled:hover:text-white enabled:hover:shadow-[0_0_30px_rgba(251,146,60,.3)] enabled:active:scale-[.99] focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200 disabled:cursor-wait"
                   >
                     ENTER XYRTANIA
                     <span className="block pt-1 font-mono text-[8px] tracking-[0.22em] text-cyan-100/50">
