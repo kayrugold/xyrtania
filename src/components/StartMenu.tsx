@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Music, Server, Settings, Volume2, X } from 'lucide-react';
+import { Maximize, Minimize, Music, Server, Settings, Volume2, X } from 'lucide-react';
 import { MenuAtmosphere } from './MenuAtmosphere';
 
 interface StartMenuProps {
@@ -48,8 +48,51 @@ export function StartMenu({
 }: StartMenuProps) {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [volume, setVolume] = useState(() => Number(localStorage.getItem('xyrtania_menu_volume') ?? 70));
+  const [bootOpen, setBootOpen] = useState(true);
+  const [bootProgress, setBootProgress] = useState(0);
+  const [bootMessage, setBootMessage] = useState('AWAKENING FIRE AND ICE');
+  const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement));
   const musicRef = useRef<HTMLAudioElement | null>(null);
   const menuLayerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !bootOpen) return;
+    let cancelled = false;
+    const completedSteps = new Set<string>();
+    const finishStep = (step: string, message: string) => {
+      if (cancelled || completedSteps.has(step)) return;
+      completedSteps.add(step);
+      setBootProgress(Math.round((completedSteps.size / 4) * 100));
+      setBootMessage(message);
+    };
+
+    const background = new Image();
+    background.onload = () => finishStep('background', 'PAINTING THE REALM');
+    background.onerror = () => finishStep('background', 'PAINTING THE REALM');
+    background.src = '/xyrtania_fire_and_ice_menu.jpg';
+
+    const audio = new Audio();
+    audio.preload = 'auto';
+    audio.oncanplaythrough = () => finishStep('audio', 'TUNING THE ANCIENT CHORUS');
+    audio.onerror = () => finishStep('audio', 'TUNING THE ANCIENT CHORUS');
+    audio.src = '/assets/audio/xyrtaniastartmenu.ogg';
+    audio.load();
+    const audioTimer = window.setTimeout(() => finishStep('audio', 'TUNING THE ANCIENT CHORUS'), 5000);
+
+    void document.fonts.ready.then(() => finishStep('fonts', 'CARVING THE RUNES'));
+    const worldTimer = window.setTimeout(() => finishStep('world', 'THE GATE IS READY'), 650);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(worldTimer);
+      window.clearTimeout(audioTimer);
+      background.onload = null;
+      background.onerror = null;
+      audio.oncanplaythrough = null;
+      audio.onerror = null;
+    };
+  }, [isOpen, bootOpen]);
+
   useEffect(() => {
     if (!isOpen) {
       musicRef.current?.pause();
@@ -58,12 +101,10 @@ export function StartMenu({
     const music = new Audio('/assets/audio/xyrtaniastartmenu.ogg');
     music.loop = true;
     music.volume = Math.min(1, Math.max(0, volume / 100));
+    music.preload = 'auto';
     musicRef.current = music;
-    const resume = () => void music.play().catch(() => undefined);
-    resume();
-    window.addEventListener('pointerdown', resume, { once: true });
+    music.load();
     return () => {
-      window.removeEventListener('pointerdown', resume);
       music.pause();
       musicRef.current = null;
     };
@@ -111,6 +152,29 @@ export function StartMenu({
     };
   }, [isOpen]);
 
+  useEffect(() => {
+    const updateFullscreen = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', updateFullscreen);
+    return () => document.removeEventListener('fullscreenchange', updateFullscreen);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+    } else {
+      void document.documentElement.requestFullscreen().catch(() => undefined);
+    }
+  };
+
+  const enterExperience = () => {
+    playStoneClick(volume);
+    void musicRef.current?.play().catch(() => undefined);
+    if (!document.fullscreenElement) {
+      void document.documentElement.requestFullscreen().catch(() => undefined);
+    }
+    setBootOpen(false);
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -132,6 +196,16 @@ export function StartMenu({
           <div className="menu-ice-glow pointer-events-none absolute inset-0 z-[1] bg-[radial-gradient(circle_at_18%_38%,rgba(105,220,255,.17),rgba(70,155,255,.04)_30%,transparent_58%)] mix-blend-screen" />
 
           <MenuAtmosphere active={isOpen} />
+
+          {!bootOpen && (
+            <button
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+              className="absolute right-4 top-4 z-40 flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-black/55 text-white/65 backdrop-blur-sm transition-colors hover:border-amber-300/60 hover:text-amber-100"
+            >
+              {isFullscreen ? <Minimize size={17} /> : <Maximize size={17} />}
+            </button>
+          )}
 
           <div className="relative z-10 flex h-full items-center justify-center px-5">
             <motion.section
@@ -172,6 +246,44 @@ export function StartMenu({
           </div>
 
           <AnimatePresence>
+            {bootOpen && (
+              <motion.div
+                initial={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.8, ease: 'easeInOut' }}
+                className="absolute inset-0 z-50 flex items-center justify-center bg-[radial-gradient(circle_at_center,rgba(15,22,32,.82),rgba(2,3,7,.97)_70%)] p-6"
+              >
+                <div className="w-full max-w-lg text-center">
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 9, repeat: Infinity, ease: 'linear' }}
+                    className="mx-auto mb-7 h-24 w-24 rounded-full border border-amber-300/35 shadow-[0_0_45px_rgba(255,115,24,.18),inset_0_0_35px_rgba(91,211,255,.12)]"
+                  >
+                    <div className="m-3 h-16 w-16 rounded-full border border-dashed border-cyan-200/35" />
+                  </motion.div>
+                  <h1 className="font-serif text-3xl tracking-[0.28em] text-amber-100 sm:text-4xl">XYRTANIA</h1>
+                  <p className="mt-4 font-mono text-[10px] tracking-[0.24em] text-cyan-100/55">{bootMessage}</p>
+                  <div className="mx-auto mt-6 h-1 w-full max-w-sm overflow-hidden bg-white/10">
+                    <motion.div
+                      className="h-full bg-gradient-to-r from-cyan-300 via-white to-orange-400 shadow-[0_0_12px_rgba(255,180,80,.8)]"
+                      animate={{ width: `${bootProgress}%` }}
+                      transition={{ duration: 0.35, ease: 'easeOut' }}
+                    />
+                  </div>
+                  <div className="mt-2 font-mono text-[10px] tabular-nums text-white/35">{bootProgress}%</div>
+                  <motion.button
+                    initial={false}
+                    animate={{ opacity: bootProgress === 100 ? 1 : 0.35 }}
+                    disabled={bootProgress !== 100}
+                    onClick={enterExperience}
+                    className="mt-8 min-h-14 w-full max-w-sm [clip-path:polygon(7%_0,93%_0,100%_50%,93%_100%,7%_100%,0_50%)] border border-amber-400/65 bg-black/75 px-8 font-serif tracking-[0.2em] text-amber-100 disabled:cursor-wait"
+                  >
+                    ENTER XYRTANIA
+                    <span className="block pt-1 font-mono text-[8px] tracking-[0.22em] text-cyan-100/50">START MUSIC · ENTER FULLSCREEN</span>
+                  </motion.button>
+                </div>
+              </motion.div>
+            )}
             {multiplayerPhase !== 'idle' && (
               <motion.div
                 initial={{ opacity: 0 }}
