@@ -16,3 +16,12 @@ html, body, #root {
   background-color: #050508;
 }
 
+.portrait-rotation-guard {
+  display: none;
+}
+
+@media (orientation: portrait) and (max-width: 900px) and (pointer: coarse) {
+  .portrait-rotation-guard {
+    display: flex;
+  }
+}

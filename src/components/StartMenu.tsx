@@ -254,32 +254,32 @@ export function StartMenu({
                 initial={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.8, ease: 'easeInOut' }}
-                className="absolute inset-0 z-50 flex items-center justify-center bg-[radial-gradient(circle_at_center,rgba(8,12,18,.94),rgba(0,0,0,.995)_72%)] p-6 backdrop-blur-[2px]"
+                className="menu-boot-overlay absolute inset-0 z-50 flex items-center justify-center bg-[radial-gradient(circle_at_center,rgba(8,12,18,.94),rgba(0,0,0,.995)_72%)] p-6 backdrop-blur-[2px]"
               >
-                <div className="w-full max-w-lg rounded-sm border border-white/10 bg-black/65 p-8 text-center shadow-[0_0_90px_rgba(0,0,0,.95)] sm:p-10">
+                <div className="menu-boot-panel w-full max-w-lg rounded-sm border border-white/10 bg-black/65 p-8 text-center shadow-[0_0_90px_rgba(0,0,0,.95)] sm:p-10">
                   <motion.div
                     animate={{ rotate: 360 }}
                     transition={{ duration: 9, repeat: Infinity, ease: 'linear' }}
-                    className="mx-auto mb-7 h-24 w-24 rounded-full border border-amber-300/35 shadow-[0_0_45px_rgba(255,115,24,.18),inset_0_0_35px_rgba(91,211,255,.12)]"
+                    className="menu-boot-sigil mx-auto mb-7 h-24 w-24 rounded-full border border-amber-300/35 shadow-[0_0_45px_rgba(255,115,24,.18),inset_0_0_35px_rgba(91,211,255,.12)]"
                   >
-                    <div className="m-3 h-16 w-16 rounded-full border border-dashed border-cyan-200/35" />
+                    <div className="menu-boot-sigil-inner m-3 h-16 w-16 rounded-full border border-dashed border-cyan-200/35" />
                   </motion.div>
-                  <h1 className="font-serif text-3xl tracking-[0.28em] text-amber-100 sm:text-4xl">XYRTANIA</h1>
-                  <p className="mt-4 font-mono text-[10px] tracking-[0.24em] text-cyan-100/55">{bootMessage}</p>
-                  <div className="mx-auto mt-6 h-1 w-full max-w-sm overflow-hidden bg-white/10">
+                  <h1 className="menu-boot-title font-serif text-3xl tracking-[0.28em] text-amber-100 sm:text-4xl">XYRTANIA</h1>
+                  <p className="menu-boot-message mt-4 font-mono text-[10px] tracking-[0.24em] text-cyan-100/55">{bootMessage}</p>
+                  <div className="menu-boot-progress mx-auto mt-6 h-1 w-full max-w-sm overflow-hidden bg-white/10">
                     <motion.div
                       className="h-full bg-gradient-to-r from-cyan-300 via-white to-orange-400 shadow-[0_0_12px_rgba(255,180,80,.8)]"
                       animate={{ width: `${bootProgress}%` }}
                       transition={{ duration: 0.35, ease: 'easeOut' }}
                     />
                   </div>
-                  <div className="mt-2 font-mono text-[10px] tabular-nums text-white/35">{bootProgress}%</div>
+                  <div className="menu-boot-percent mt-2 font-mono text-[10px] tabular-nums text-white/35">{bootProgress}%</div>
                   <motion.button
                     initial={false}
                     animate={{ opacity: bootProgress === 100 ? 1 : 0.35 }}
                     disabled={bootProgress !== 100}
                     onClick={enterExperience}
-                    className="group relative mt-8 min-h-14 w-full max-w-sm overflow-hidden [clip-path:polygon(7%_0,93%_0,100%_50%,93%_100%,7%_100%,0_50%)] border border-amber-400/65 bg-black/75 px-8 font-serif tracking-[0.2em] text-amber-100 transition-[border-color,transform] duration-75 enabled:hover:border-amber-300/85 enabled:active:scale-[.99] focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200 disabled:cursor-wait"
+                    className="menu-boot-enter group relative mt-8 min-h-14 w-full max-w-sm overflow-hidden [clip-path:polygon(7%_0,93%_0,100%_50%,93%_100%,7%_100%,0_50%)] border border-amber-400/65 bg-black/75 px-8 font-serif tracking-[0.2em] text-amber-100 transition-[border-color,transform] duration-75 enabled:hover:border-amber-300/85 enabled:active:scale-[.99] focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200 disabled:cursor-wait"
                   >
                     <span className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-amber-300 to-transparent opacity-0 transition-opacity duration-75 group-hover:opacity-100 group-focus-visible:opacity-100" />
                     <span className="pointer-events-none absolute inset-x-8 bottom-0 h-px bg-gradient-to-r from-transparent via-orange-400 to-transparent opacity-0 transition-opacity duration-75 group-hover:opacity-100 group-focus-visible:opacity-100" />
@@ -422,6 +422,31 @@ export function StartMenu({
               .menu-fire-glow,
               .menu-ice-glow {
                 animation: none;
+              }
+            }
+            @media (orientation: landscape) and (max-height: 520px) {
+              .menu-boot-overlay { padding: .5rem; }
+              .menu-boot-panel {
+                max-width: min(32rem, calc(100vw - 1rem));
+                padding: .7rem 1.5rem;
+              }
+              .menu-boot-sigil {
+                width: 3.25rem;
+                height: 3.25rem;
+                margin-bottom: .45rem;
+              }
+              .menu-boot-sigil-inner {
+                width: 2.15rem;
+                height: 2.15rem;
+                margin: .5rem;
+              }
+              .menu-boot-title { font-size: 1.45rem; line-height: 1.7rem; }
+              .menu-boot-message { margin-top: .35rem; }
+              .menu-boot-progress { margin-top: .65rem; }
+              .menu-boot-percent { margin-top: .25rem; }
+              .menu-boot-enter {
+                min-height: 2.75rem;
+                margin-top: .65rem;
               }
             }
           `}</style>

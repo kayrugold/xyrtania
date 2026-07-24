@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'; // Trigger file watcher
 import * as THREE from 'three';
-import { Maximize, Palette, Activity } from 'lucide-react';
+import { Maximize, Palette, Activity, RotateCw } from 'lucide-react';
 import { WorldGrid } from './WorldGrid';
 import { PlayerState, JumpPhase, resolveAssetUrl } from './types';
 import { CharacterAnimator } from './CharacterAnimator';
@@ -2612,6 +2612,14 @@ export default function App() {
 
   return (
     <div className={isFakeFullscreen ? "fixed inset-0 z-[99999] w-full h-[100dvh] bg-[#050508] text-slate-300 font-sans overflow-hidden" : "w-screen h-[100dvh] bg-[#050508] text-slate-300 font-sans relative overflow-hidden"}>
+      <div className="portrait-rotation-guard fixed inset-0 z-[2000000] flex-col items-center justify-center bg-[radial-gradient(circle_at_center,#101722,#020307_72%)] px-8 text-center text-white">
+        <RotateCw className="mb-6 h-14 w-14 text-amber-300" strokeWidth={1.4} />
+        <h2 className="font-serif text-2xl tracking-[0.2em] text-amber-100">ROTATE YOUR DEVICE</h2>
+        <p className="mt-4 max-w-xs font-mono text-[11px] leading-relaxed tracking-[0.12em] text-cyan-100/60">
+          Xyrtania is designed for landscape play.
+        </p>
+        <div className="mt-7 h-px w-40 bg-gradient-to-r from-transparent via-amber-400/70 to-transparent" />
+      </div>
       {/* Character Loading Error Banner */}
 
       {/* PWA Cryptographic Identity */}
