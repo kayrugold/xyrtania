@@ -254,11 +254,232 @@ read remain open design questions.
 
 ## Next Design Round
 
-The next interview round will define:
+## 11. Combat Philosophy
 
-- The minute-to-minute action gameplay.
-- Combat style and danger.
-- Death, defeat, injury, and recovery.
-- The core gameplay loop.
-- Single-player, multiplayer, and persistent-world expectations.
+**Established direction**
 
+Combat is real-time, smooth, device-appropriate, and primarily determined by
+player skill. Xyrtania has no character levels. Equipment, preparation,
+learned techniques, physical conditioning, and knowledge matter greatly, but
+they do not replace timing, positioning, reactions, and mastery of the controls.
+
+Combat can begin anywhere at any time. Settlements protect people through laws,
+guards, reputation, arrest, and imprisonment rather than artificial safe zones.
+A player can attack someone inside a city, but guards may intervene and jail the
+aggressor.
+
+The intended feel combines:
+
+- The speed, responsiveness, and traversal-friendly action of a modern
+  third-person game.
+- The freedom and immediacy of open-world action RPG combat.
+- The readable spacing, counters, combinations, and learned techniques of a
+  fighting game.
+- Controls that are approachable initially but support long-term mastery.
+
+Every combat action must be playable with a controller. Keyboard and mouse,
+touch, and controller mappings may differ physically, but each should expose the
+same underlying player actions and competitive possibilities.
+
+## 12. Combat Modes and Technology
+
+**Established direction; exact controls require prototyping**
+
+Combat adapts to the player's weapon and focus state.
+
+### Focused close combat
+
+When the player focuses on a nearby opponent, the character faces that target.
+Movement becomes opponent-relative: advance, retreat, and strafe around the
+target. This creates a fighting-game-like relationship in a fully 3D world and
+supports combinations, counters, defensive timing, and directional techniques.
+
+Learned moves can combine an input condition with a gesture or directional
+motion. One example is Wind Fist: while holding its action input, the player
+performs a deliberate mouse gesture or controller equivalent to release a
+shuriken-shaped wind blast and follow with a powerful strike.
+
+### Ranged and firearm combat
+
+When carrying a ranged weapon or firearm, the player can still focus on an
+enemy, but aiming and movement shift toward fluid third-person ranged combat.
+The two modes should feel like parts of one system rather than unrelated games.
+
+Weapons emerge through civilization technology:
+
+- Crossbow discoveries make crossbows and trained crossbow users possible.
+- Gunpowder eventually enables arquebuses and arquebusiers.
+- Continued discovery can carry civilizations into modern firearms.
+
+Technology therefore changes not only statistics but the available combat
+language of the world.
+
+## 13. Defeat, Death, and Legacy
+
+**Defeat model established; death and succession details tentative**
+
+Defeat and death are separate states. A defeated character is knocked down and
+incapacitated for a short period. The victor, a guard, another player, or an NPC
+may then decide whether to spare, capture, rob, rescue, or kill the defeated
+character when circumstances allow.
+
+If killed, a player normally respawns at one of the following:
+
+- Their home or registered place of residence.
+- A nearby village or safe settlement.
+- A previously selected checkpoint.
+
+A temporary afterlife or hellscape is an open possibility, but it is not yet an
+established part of Xyrtania.
+
+Aging may eventually create a rarer form of permanent character death. The
+player could continue as a child, apprentice, gardener, companion, or chosen
+heir who inherits some combination of property, knowledge, relationships,
+reputation, and unfinished obligations. The exact legacy system remains open.
+
+## 14. Survival as Play, Not Punishment
+
+**Established direction**
+
+Survival systems should create decisions, preparation, discoveries, and stories.
+They must provide clear warnings and reasonable recovery opportunities rather
+than repeatedly interrupting the player with chores.
+
+- Hunger and thirst apply consistent but not constant pressure.
+- Food and drink vary in availability, quality, and safety.
+- Water may contain bacteria and require knowledge, treatment, boiling, or a
+  trustworthy source.
+- Weather and temperature significantly affect wellbeing.
+- Characters visibly react to heat and cold through effects such as sweating or
+  blue-tinged skin.
+- Cold water can reduce movement and create an urgent need for shelter, dry
+  clothing, warmth, or a fire.
+- Hunger, thirst, exertion, and lack of sleep can produce fatigue and reduced
+  performance.
+- Severe neglect can eventually kill, but only after substantial warning.
+- Illness may follow contaminated water, unsafe mushrooms, excessive drinking,
+  exposure, or sleep deprivation.
+- Injuries have specific consequences and treatments.
+- A broken bone may be braced by someone with basic knowledge but require a
+  doctor or magical healer for complete treatment.
+
+The player should think, “I need to solve this situation,” rather than, “the
+game is punishing me for continuing to play.”
+
+## 15. Progression Without Character Levels
+
+**Established direction; skill tree remains open**
+
+Xyrtania has no overall character level. Progression is distributed across
+knowledge, practiced skills, physical condition, social access, equipment, and
+technology.
+
+Players improve through a mixture of:
+
+- Performing relevant actions.
+- Training and repeated practice.
+- Teachers and mentors.
+- Skill trees and technique prerequisites.
+- Books, discoveries, experimentation, and cultural knowledge.
+- Membership and social access. For example, a barracks trainer may teach only
+  guards or soldiers.
+
+Frequent jumping and sustained movement might improve aerobic capabilities.
+Strength grows through relevant work and training but can decline through long
+inactivity. A character's visible physique should respond to what they do.
+
+Every character theoretically has the opportunity to master everything, but
+doing so should be a life-scale achievement that could take approximately ten
+real-world years. Practical specialization emerges from time, access, choices,
+and opportunity rather than a permanent class restriction.
+
+## 16. Example Session: A Journey to Sanyu
+
+**Established target experience**
+
+The player enters Xyrtania, selects Multiplayer, and authenticates using a known
+cached character or account recovery. Their character awakens in Nat, a small
+farming village, with a horse and packed supplies.
+
+World news announces that the people of Malyn have discovered the compass. The
+player does not receive a compass widget automatically. To gain that navigational
+advantage, they must obtain a physical compass through the world's economy.
+
+A trader in the player-owned town of Sanyu may have one. The player's purchased
+paper map shows Sanyu approximately five kilometers east. Before departing, the
+player eats an apple, drinks from a canteen, checks the horse's packs, and
+confirms that the animal is not overloaded.
+
+The road is relatively safe but not empty. It may offer berries, wild game,
+bandits, highwaymen, and unexpected events. A wolf bursts from the forest and
+knocks the player down. The player focuses on it and uses the Wind Fist technique
+learned from a trainer. The strike drives the wolf away without leaving the
+player injured, and the journey continues.
+
+This session expresses Xyrtania's intended loop:
+
+1. Receive news from the evolving world.
+2. Form a personal goal.
+3. Gather information and prepare.
+4. Travel through meaningful distance.
+5. Manage light survival pressures and carrying capacity.
+6. Encounter emergent resources, people, wildlife, and danger.
+7. Apply learned skills and player mastery.
+8. Reach a settlement, trade, socialize, or revise the plan.
+9. Leave behind consequences and a journal-worthy story.
+
+### Information is part of the economy
+
+Maps, compasses, discoveries, teachers, rumors, and world news are gameplay
+objects and services—not merely interface conveniences. A civilization's
+discoveries can change what players know, what traders sell, which HUD tools are
+available, and how safely people travel.
+
+## 17. Single-Player and Multiplayer
+
+**Established**
+
+Single-player and multiplayer are separate games with separate characters and
+worlds. Characters do not move between them.
+
+### Single-player
+
+- New Game generates a private world.
+- The player may regenerate it repeatedly until finding a world they want.
+- Procedural world variation supports substantial replayability.
+- The player creates any character appropriate to that private game.
+- NPCs, settlements, civilizations, and the strategic world still update.
+
+### Multiplayer
+
+- The world is shared and persistent.
+- Player identity is tied to an authenticated multiplayer character.
+- NPC and world-map state update through persistent server-side data.
+- Discoveries, settlements, markets, politics, and player actions can affect
+  other people in the same world.
+
+The two modes may share engine systems and content, but they do not share world
+state or character progression.
+
+## 18. Time and World Turns
+
+**Tentative**
+
+One proposed structure combines real-time character play with a turn-like world
+simulation. At midnight, the day ends and NPC records, characters, settlements,
+and civilizations receive an opportunity to process their next world-state
+changes. The island can be understood as a strategic gameboard beneath the 3D
+world.
+
+This idea requires further design because a persistent MMORPG cannot simply
+pause all active players at midnight. The system may ultimately use scheduled
+daily simulation ticks, staggered processing, or another approach that preserves
+the feeling of a world turn without interrupting real-time play.
+
+---
+
+## Next Design Round
+
+The next interview round will define the world's clock and the relationship
+between real-time action, NPC schedules, settlement simulation, and strategic
+civilization turns.
