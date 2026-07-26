@@ -45,6 +45,9 @@ export default function App() {
   const [heading, setHeading] = useState('N');
   const [headingDegrees, setHeadingDegrees] = useState(0);
   const [fps, setFps] = useState(60);
+  const fpsIndicatorRef = useRef<HTMLSpanElement | null>(null);
+  const healthBarFillRef = useRef<HTMLSpanElement | null>(null);
+  const staminaBarFillRef = useRef<HTMLSpanElement | null>(null);
   
   const [chunkCx, setChunkCx] = useState(0);
   const [chunkCz, setChunkCz] = useState(0);
@@ -806,7 +809,8 @@ export default function App() {
 
 
     // --- RE-ENABLE FULL RICH HUD PARTS FOR INTUITIVE USER CONTROLS ---
-    healthContainer.visible = true;
+    // The survival vitals now live in the responsive DOM top bar.
+    healthContainer.visible = false;
     compassSystem.visible = false;
     noticePlate.visible = true;
 
@@ -2442,6 +2446,9 @@ export default function App() {
       const nowTime = performance.now();
       if (nowTime > lastFpsUpdate + 500) {
         const currentFps = Math.round((frames * 1000) / (nowTime - lastTime));
+        if (fpsIndicatorRef.current) {
+          fpsIndicatorRef.current.textContent = `${currentFps} FPS`;
+        }
         if (showDiagnosticsRef.current) setFps(currentFps);
         frames = 0;
         lastTime = nowTime;
@@ -2450,6 +2457,20 @@ export default function App() {
 
       // Sync state updates at highly responsive yet resource-friendly 12Hz frame-rate (approx 80ms ticks)
       if (globalTime > lastStateUpdate + 0.08) {
+        // Update the persistent HUD without scheduling a React render. These
+        // scale transforms stay on the compositor and are effectively free
+        // compared with the WebGL world render.
+        const healthRatio = THREE.MathUtils.clamp(state.health / 100, 0, 1);
+        const staminaRatio = THREE.MathUtils.clamp(currentStamina / 100, 0, 1);
+        if (healthBarFillRef.current) {
+          healthBarFillRef.current.style.transform = `scaleX(${healthRatio})`;
+          healthBarFillRef.current.setAttribute('aria-valuenow', Math.round(state.health).toString());
+        }
+        if (staminaBarFillRef.current) {
+          staminaBarFillRef.current.style.transform = `scaleX(${staminaRatio})`;
+          staminaBarFillRef.current.setAttribute('aria-valuenow', Math.round(currentStamina).toString());
+        }
+
         if (showDiagnosticsRef.current) {
           setPx(state.position.x);
           setPz(state.position.z);
@@ -2704,8 +2725,54 @@ export default function App() {
         </div>
       </div>
 
-      {/* HUD UI Elements */}
-      <div className="absolute top-4 right-4 z-50 flex gap-2 items-center">
+      {/* Unified top menu bar */}
+      {!isStartMenuActive && (
+        <div className="game-topbar" aria-label="Player status and game controls">
+          <div className="survival-hud">
+            <div
+              className="player-portrait"
+              aria-label="Character portrait"
+              style={{ '--portrait-skin': customColor } as React.CSSProperties}
+            >
+              <span className="player-portrait__head" />
+              <span className="player-portrait__body" />
+            </div>
+
+            <div className="primary-vitals">
+              <div className="vital-row vital-row--health">
+                <span className="vital-label">Health</span>
+                <div className="vital-track">
+                  <span ref={healthBarFillRef} className="vital-fill" role="progressbar" aria-label="Health" aria-valuemin={0} aria-valuemax={100} aria-valuenow={100} />
+                </div>
+              </div>
+              <div className="vital-row vital-row--stamina">
+                <span className="vital-label">Stamina</span>
+                <div className="vital-track">
+                  <span ref={staminaBarFillRef} className="vital-fill" role="progressbar" aria-label="Stamina" aria-valuemin={0} aria-valuemax={100} aria-valuenow={100} />
+                </div>
+              </div>
+              <div className="survival-pills">
+                <div className="survival-pill survival-pill--hunger" title="Hunger 100%">
+                  <span className="survival-pill__label">Hunger</span>
+                  <span className="survival-pill__track">
+                    <span className="survival-pill__fill" />
+                  </span>
+                </div>
+                <div className="survival-pill survival-pill--thirst" title="Thirst 100%">
+                  <span className="survival-pill__label">Thirst</span>
+                  <span className="survival-pill__track">
+                    <span className="survival-pill__fill" />
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Top-right game controls */}
+      <div className="game-topbar-controls">
+        <span ref={fpsIndicatorRef} className="topbar-fps" aria-label="Current frame rate">60 FPS</span>
         {(isAdmin || connectionMode === 'p2p') && (
         <>
         <button

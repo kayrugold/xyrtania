@@ -15,8 +15,11 @@ export default defineConfig(() => {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // Polling reliably detects edits made by external Windows processes
+      // (including Codex) that can be missed by native filesystem events.
+      watch: process.env.DISABLE_HMR === 'true'
+        ? null
+        : { usePolling: true, interval: 500 },
     },
   };
 });

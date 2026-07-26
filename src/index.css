@@ -20,6 +20,288 @@ html, body, #root {
   display: none;
 }
 
+:root {
+  --hud-bronze: #bd8a48;
+  --hud-bronze-bright: #edc57c;
+  --hud-panel: rgba(4, 8, 11, 0.82);
+  --hud-line: rgba(237, 197, 124, 0.3);
+  --hud-health: #b72d2d;
+  --hud-stamina: #399355;
+  --hud-hunger: #87552e;
+  --hud-thirst: #287eb9;
+}
+
+.game-topbar {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 45;
+  height: 82px;
+  pointer-events: none;
+}
+
+.survival-hud {
+  position: absolute;
+  top: 6px;
+  left: 12px;
+  display: grid;
+  grid-template-columns: 66px 220px;
+  align-items: start;
+}
+
+.player-portrait {
+  --portrait-skin: #c98e72;
+  position: relative;
+  z-index: 2;
+  width: 64px;
+  height: 64px;
+  overflow: hidden;
+  border: 1.5px solid var(--hud-bronze);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(40, 77, 83, 0.72), rgba(4, 9, 12, 0.96) 68%);
+  box-shadow:
+    0 0 0 1.5px rgba(0, 0, 0, 0.78),
+    0 3px 14px rgba(0, 0, 0, 0.68),
+    inset 0 0 14px rgba(101, 207, 195, 0.14);
+}
+
+.player-portrait__head,
+.player-portrait__body {
+  position: absolute;
+  left: 50%;
+  display: block;
+  transform: translateX(-50%);
+  background: var(--portrait-skin);
+  filter: brightness(0.88) saturate(0.82);
+}
+
+.player-portrait__head {
+  top: 11px;
+  width: 24px;
+  height: 28px;
+  border-radius: 48% 48% 44% 44%;
+  box-shadow: inset -6px -3px 8px rgba(38, 16, 8, 0.28);
+}
+
+.player-portrait__body {
+  top: 39px;
+  width: 51px;
+  height: 30px;
+  border-radius: 50% 50% 8px 8px;
+  box-shadow: inset -10px 0 12px rgba(38, 16, 8, 0.24);
+}
+
+.primary-vitals {
+  min-width: 0;
+  margin-left: -18px;
+  padding-top: 3px;
+}
+
+.vital-row {
+  position: relative;
+  height: 14px;
+  margin-bottom: 3px;
+  padding: 1.5px;
+  border: 1px solid rgba(237, 197, 124, 0.45);
+  border-left: 0;
+  border-radius: 0 9px 9px 0;
+  background: rgba(0, 0, 0, 0.78);
+  box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.85);
+}
+
+.vital-track,
+.vital-fill {
+  display: block;
+  height: 100%;
+  border-radius: 0 6px 6px 0;
+}
+
+.vital-track {
+  overflow: hidden;
+}
+
+.vital-fill {
+  width: 100%;
+  transform: scaleX(1);
+  transform-origin: left center;
+  transition: transform 160ms ease-out;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.18);
+}
+
+.vital-row--health .vital-fill {
+  background: linear-gradient(90deg, #7e1818, var(--hud-health));
+}
+
+.vital-row--stamina .vital-fill {
+  background: linear-gradient(90deg, #1e6537, var(--hud-stamina));
+}
+
+.vital-row--stamina {
+  margin-right: 14px;
+}
+
+.vital-label {
+  position: absolute;
+  z-index: 2;
+  left: 27px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: rgba(255, 248, 225, 0.9);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px #000;
+}
+
+.survival-pills {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  margin: 0 14px 0 8px;
+  padding: 0;
+}
+
+.survival-pill {
+  position: relative;
+  height: 13px;
+  overflow: hidden;
+  border: 1px solid rgba(237, 197, 124, 0.42);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.82);
+}
+
+.survival-pill__track,
+.survival-pill__fill {
+  position: absolute;
+  inset: 2px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+
+.survival-pill__fill {
+  inset: 0 auto 0 0;
+  width: 100%;
+  transform: scaleX(1);
+  transform-origin: left center;
+  transition: transform 160ms ease-out;
+}
+
+.survival-pill--hunger .survival-pill__fill {
+  background: linear-gradient(90deg, #5b341e, var(--hud-hunger));
+}
+
+.survival-pill--thirst .survival-pill__fill {
+  background: linear-gradient(90deg, #164f7a, var(--hud-thirst));
+}
+
+.survival-pill__label {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgba(255, 248, 225, 0.9);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 2px #000;
+}
+
+.game-topbar-controls {
+  position: absolute;
+  z-index: 60;
+  top: 10px;
+  right: 158px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.game-topbar-controls button {
+  height: 32px;
+  min-width: 32px;
+  padding: 6px 8px !important;
+  border-radius: 6px;
+}
+
+.game-topbar-controls button svg {
+  width: 17px;
+  height: 17px;
+}
+
+.topbar-fps {
+  min-width: 45px;
+  color: #62ff8a;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-shadow: 0 0 8px rgba(60, 255, 112, 0.7);
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .game-topbar {
+    height: 70px;
+  }
+
+  .survival-hud {
+    top: 5px;
+    left: 8px;
+    grid-template-columns: 58px minmax(112px, 31vw);
+  }
+
+  .player-portrait {
+    width: 56px;
+    height: 56px;
+  }
+
+  .player-portrait__head {
+    top: 10px;
+    width: 23px;
+    height: 27px;
+  }
+
+  .player-portrait__body {
+    top: 37px;
+    width: 48px;
+  }
+
+  .vital-row {
+    height: 14px;
+    margin-bottom: 3px;
+  }
+
+  .survival-pills {
+    padding-left: 6px;
+    padding-right: 3px;
+    gap: 3px;
+  }
+
+  .survival-pill {
+    height: 13px;
+  }
+
+  .game-topbar-controls {
+    top: 8px;
+    right: 140px;
+    gap: 4px;
+  }
+
+  .topbar-fps {
+    display: none;
+  }
+
+  .game-topbar-controls button {
+    padding: 7px;
+  }
+}
+
 @media (orientation: portrait) and (max-width: 900px) and (pointer: coarse) {
   .portrait-rotation-guard {
     display: flex;
