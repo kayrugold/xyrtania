@@ -1764,7 +1764,7 @@ export default function App() {
       // We want walk -> jog -> run, so we use a low acceleration factor when running
       // so the player naturally transitions through the animation thresholds.
       
-      let baseSpeed = 18;
+      let baseSpeed = 10;
       if (isSwimmingNow) baseSpeed = 8;
       else if (isProneNow) baseSpeed = 2;
       else if (isCrouchingNow) baseSpeed = 4.5;
@@ -2216,7 +2216,7 @@ export default function App() {
 
         // Dampen the running zoom-out lag specifically for the bulkier character (base_male_0)
         if (animator.currentModelUrl && animator.currentModelUrl.includes('base_male_0')) {
-          const speedFactor = Math.min(1.0, state.speed / 18);
+          const speedFactor = Math.min(1.0, state.speed / 10);
           currentCamDist -= speedFactor * 1.25;
         }
           
@@ -2334,31 +2334,12 @@ export default function App() {
            peer.animator = remAnim;
         }
 
-        const remoteRenderPosition = peer.state.position.clone();
-        // Play remote snapshots using the sender's simulation timestamps. Keep
-        // two updates buffered so irregular Render delivery cannot change the
-        // apparent movement speed.
-        if (peer.playbackAt === undefined && peer.snapshots.length >= 3) {
-            peer.playbackAt = peer.snapshots[0].sentAt;
-        }
-        if (peer.playbackAt !== undefined && peer.snapshots.length >= 2) {
-            const latestSentAt = peer.snapshots[peer.snapshots.length - 1].sentAt;
-            const maxPlaybackAt = peer.snapshots[peer.snapshots.length - 2].sentAt;
-            peer.playbackAt = Math.min(
-                peer.playbackAt + dt * 1000,
-                Math.min(maxPlaybackAt, latestSentAt)
-            );
-            while (peer.snapshots.length >= 2 && peer.snapshots[1].sentAt <= peer.playbackAt) {
-                peer.snapshots.shift();
-            }
-            const from = peer.snapshots[0];
-            const to = peer.snapshots[1];
-            const duration = Math.max(1, to.sentAt - from.sentAt);
-            const alpha = THREE.MathUtils.clamp((peer.playbackAt - from.sentAt) / duration, 0, 1);
-            remoteRenderPosition.lerpVectors(from.position, to.position, alpha);
-        } else if (peer.snapshots.length === 1) {
-            remoteRenderPosition.copy(peer.snapshots[0].position);
-        }
+        // Continue remote movement at the sender's real velocity between
+        // packets, then gently correct toward a short prediction of the latest
+        // authoritative position. This avoids both packet-by-packet bursts and
+        // buffered playback stalls.
+        const packetAge = Math.min(0.15, (performance.now() - peer.lastUpdate) / 1000);
+        const remoteRenderPosition = peer.state.position.clone().addScaledVector(peer.state.velocity, packetAge);
 
         // Adjust remote player Y locally if their client is inactive (e.g. background tab)
         const pFloorH = worldGrid.getGroundHeight(remoteRenderPosition.x, remoteRenderPosition.z);
@@ -2372,7 +2353,9 @@ export default function App() {
             remoteRenderPosition.y = Math.max(expectedY, remoteRenderPosition.y - dt * 12.0);
         }
 
-        remAnim.group.position.copy(remoteRenderPosition);
+        remAnim.group.position.addScaledVector(peer.state.velocity, dt);
+        const correctionAlpha = 1 - Math.exp(-8 * dt);
+        remAnim.group.position.lerp(remoteRenderPosition, correctionAlpha);
         
         // Match rotation (shortcut for direction interpolation)
         const targetQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), peer.state.direction || 0);

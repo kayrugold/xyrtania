@@ -13,11 +13,6 @@ export interface RemotePlayer {
   id: string;
   state: PlayerState;
   lastUpdate: number;
-  snapshots: Array<{
-    position: THREE.Vector3;
-    sentAt: number;
-  }>;
-  playbackAt?: number;
   animator?: any;
 }
 
@@ -53,21 +48,6 @@ export class NetworkManager {
   private lastSentAnimation?: string;
   private _lastPositionSaveTime: number = 0;
   private connectionIdentity?: ConnectionIdentity;
-
-  private recordSnapshot(peer: RemotePlayer, sentAt?: number) {
-    const snapshotTime = typeof sentAt === 'number' && Number.isFinite(sentAt)
-      ? sentAt
-      : performance.now();
-    const previous = peer.snapshots[peer.snapshots.length - 1];
-    if (previous && snapshotTime <= previous.sentAt) return;
-    peer.snapshots.push({
-      position: peer.state.position.clone(),
-      sentAt: snapshotTime
-    });
-    if (peer.snapshots.length > 20) {
-      peer.snapshots.splice(0, peer.snapshots.length - 20);
-    }
-  }
 
   public get sessionId(): string | undefined {
     if (this.connectionMode !== 'p2p') {
@@ -185,8 +165,7 @@ export class NetworkManager {
         this.peers.set(peerId, {
           id: peerId,
           state: this.createEmptyState(),
-          lastUpdate: performance.now(),
-          snapshots: []
+          lastUpdate: performance.now()
         });
         
         if (this.lastKnownState) {
@@ -210,8 +189,7 @@ export class NetworkManager {
           this.peers.set(peerId, {
             id: peerId,
             state: this.createEmptyState(),
-            lastUpdate: performance.now(),
-            snapshots: []
+            lastUpdate: performance.now()
           });
           peer = this.peers.get(peerId)!;
           if (this.onPeersChange) this.onPeersChange(this.peers.size);
@@ -225,7 +203,10 @@ export class NetworkManager {
         if (data.y !== undefined) peer.state.position.y = data.y;
         if (data.z !== undefined) peer.state.position.z = data.z;
         if (data.rotation !== undefined) peer.state.direction = data.rotation;
-        this.recordSnapshot(peer, data.sentAt);
+        if (data.velocityX !== undefined) peer.state.velocity.x = data.velocityX;
+        if (data.velocityY !== undefined) peer.state.velocity.y = data.velocityY;
+        if (data.velocityZ !== undefined) peer.state.velocity.z = data.velocityZ;
+        peer.state.speed = peer.state.velocity.length();
         
         if (data.customColor !== undefined) peer.state.customColor = data.customColor;
         if (data.morphTargets !== undefined) peer.state.morphTargets = data.morphTargets;
@@ -433,8 +414,7 @@ export class NetworkManager {
           this.peers.set(sessionId, {
               id: sessionId,
               state: this.createEmptyState(),
-              lastUpdate: performance.now(),
-              snapshots: []
+              lastUpdate: performance.now()
           });
           if (this.onPeersChange) this.onPeersChange(this.peers.size);
 
@@ -448,7 +428,8 @@ export class NetworkManager {
           peer.state.animationState = player.animationState || 'neutral_idle';
           peer.state.isCrouching = player.isCrouching;
           peer.state.isProne = player.isProne;
-          this.recordSnapshot(peer, player.sentAt);
+          peer.state.velocity.set(player.velocityX, player.velocityY, player.velocityZ);
+          peer.state.speed = peer.state.velocity.length();
           try {
               peer.state.morphTargets = player.morphTargetsJson ? JSON.parse(player.morphTargetsJson) : {};
           } catch(e) { peer.state.morphTargets = {}; }
@@ -464,6 +445,8 @@ export class NetworkManager {
               peerToUpdate.state.position.y = player.y;
               peerToUpdate.state.position.z = player.z;
               peerToUpdate.state.direction = player.rotation;
+              peerToUpdate.state.velocity.set(player.velocityX, player.velocityY, player.velocityZ);
+              peerToUpdate.state.speed = peerToUpdate.state.velocity.length();
               peerToUpdate.state.modelUrl = player.avatarId || '/assets/character/Xyrtania_Male_NoMorphs.glb';
               
               const oldDisplayName = peerToUpdate.state.displayName;
@@ -496,7 +479,6 @@ export class NetworkManager {
               peerToUpdate.state.currentAnimation = player.currentAnimation || 'neutral_idle';
               peerToUpdate.state.isCrouching = player.isCrouching;
               peerToUpdate.state.isProne = player.isProne;
-              this.recordSnapshot(peerToUpdate, player.sentAt);
           });
       });
 
@@ -610,7 +592,9 @@ export class NetworkManager {
         customColor: state.customColor || "",
         customScale: typeof state.customScale === 'number' ? state.customScale : 1.0,
         isCrouching: !!state.isCrouching,
-        sentAt: performance.now(),
+        velocityX: typeof state.velocity.x === 'number' ? state.velocity.x : 0,
+        velocityY: typeof state.velocity.y === 'number' ? state.velocity.y : 0,
+        velocityZ: typeof state.velocity.z === 'number' ? state.velocity.z : 0,
         morphTargetsJson: JSON.stringify(state.morphTargets || {}),
         morphTargets: state.morphTargets || {},
         isProne: !!state.isProne
