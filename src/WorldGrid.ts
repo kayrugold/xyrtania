@@ -144,10 +144,10 @@ export class WorldGrid {
     waterPlane.rotation.x = -Math.PI / 2;
     waterPlane.position.set(0, -0.5, 0); // Water level globally
     
-    const isPotato = localStorage.getItem('xyrtania_quality') === 'potato';
-    if (!isPotato) {
-      this.scene.add(waterPlane);
-    }
+    // Water is collision-relevant world geography, so every graphics preset
+    // must render it. Quality settings may simplify its appearance later, but
+    // must never make physically present water invisible.
+    this.scene.add(waterPlane);
 
 
     // Low-poly material set representing beautiful stylized environment
@@ -485,8 +485,6 @@ export class WorldGrid {
   // Procedurally creates a terrain block of 40x40 size
   
   private generateChunk(cx: number, cz: number): void {
-    const isPotato = localStorage.getItem('xyrtania_quality') === 'potato';
-
     const chunkGroup = new THREE.Group();
     chunkGroup.name = `chunk_${cx}_${cz}`;
 
@@ -496,7 +494,10 @@ export class WorldGrid {
     
     const chunkWorldX = cx * this.chunkSize;
     const chunkWorldZ = cz * this.chunkSize;
-    const groundGeo = isPotato ? new THREE.PlaneGeometry(this.chunkSize, this.chunkSize, 1, 1) : this.sharedGeometries.ground.clone();
+    // Terrain geometry must retain the same 4-unit sampling grid used by
+    // getGroundHeight(). Reducing this to a 1x1 plane in potato mode makes the
+    // rendered ground flat while collision continues to follow the D1 heights.
+    const groundGeo = this.sharedGeometries.ground.clone();
     
     // Convert base material color to rgb for fallback
     const baseColor = new THREE.Color(isEven ? 0x8ab07d : 0x7c9c70);
@@ -536,7 +537,10 @@ export class WorldGrid {
     const clutter: THREE.Object3D[] = [];
 
     // Determine obstacle density [5 to 15 assets per chunk]
-    const clutterCount = isPotato ? 0 : 1;
+    // Keep deterministic obstacle population identical across quality modes.
+    // Graphics quality changes render resolution, never world content or the
+    // GLB asset used to represent a collision-relevant tree.
+    const clutterCount = 1;
 
     for (let i = 0; i < clutterCount; i++) {
       const rollType = this.seededRandom(baseSeed, i * 3 + 2);

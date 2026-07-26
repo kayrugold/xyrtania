@@ -491,6 +491,10 @@ export class CharacterAnimator {
   }
 
   public async setHeadStyle(style: number, headUrl: string | null = null) {
+      // Alternate heads are temporarily disabled until the character body is
+      // separated into modular pieces.
+      style = 0;
+      headUrl = null;
       this.currentHeadStyle = style;
       if (headUrl !== null) {
           this.customHeadUrl = headUrl;

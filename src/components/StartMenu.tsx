@@ -274,20 +274,18 @@ export function StartMenu({
                     />
                   </div>
                   <div className="menu-boot-percent mt-2 font-mono text-[10px] tabular-nums text-white/35">{bootProgress}%</div>
-                  <motion.button
-                    initial={false}
-                    animate={{ opacity: bootProgress === 100 ? 1 : 0.35 }}
+                  <button
                     disabled={bootProgress !== 100}
                     onClick={enterExperience}
-                    className="menu-boot-enter group relative mt-8 min-h-14 w-full max-w-sm overflow-hidden [clip-path:polygon(7%_0,93%_0,100%_50%,93%_100%,7%_100%,0_50%)] border border-amber-400/65 bg-black/75 px-8 font-serif tracking-[0.2em] text-amber-100 transition-[border-color,transform] duration-75 enabled:hover:border-amber-300/85 enabled:active:scale-[.99] focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200 disabled:cursor-wait"
+                    className={`menu-boot-enter group relative mt-8 min-h-14 w-full max-w-sm overflow-hidden [clip-path:polygon(7%_0,93%_0,100%_50%,93%_100%,7%_100%,0_50%)] border border-amber-400/65 bg-black/75 px-8 font-serif tracking-[0.2em] text-amber-100 enabled:active:scale-[.99] focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200 disabled:cursor-wait ${bootProgress === 100 ? 'opacity-100' : 'opacity-35'}`}
                   >
-                    <span className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-amber-300 to-transparent opacity-0 transition-opacity duration-75 group-hover:opacity-100 group-focus-visible:opacity-100" />
-                    <span className="pointer-events-none absolute inset-x-8 bottom-0 h-px bg-gradient-to-r from-transparent via-orange-400 to-transparent opacity-0 transition-opacity duration-75 group-hover:opacity-100 group-focus-visible:opacity-100" />
+                    <span className="pointer-events-none absolute inset-x-8 top-0 hidden h-px bg-gradient-to-r from-transparent via-amber-300 to-transparent group-hover:block group-focus-visible:block" />
+                    <span className="pointer-events-none absolute inset-x-8 bottom-0 hidden h-px bg-gradient-to-r from-transparent via-orange-400 to-transparent group-hover:block group-focus-visible:block" />
                     ENTER XYRTANIA
                     <span className="block pt-1 font-mono text-[8px] tracking-[0.22em] text-cyan-100/50">
                       {isNativeShell ? 'START MUSIC · CONTINUE' : 'START MUSIC · ENTER FULLSCREEN'}
                     </span>
-                  </motion.button>
+                  </button>
                 </div>
               </motion.div>
             )}

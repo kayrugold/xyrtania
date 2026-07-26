@@ -113,19 +113,14 @@ export default function App() {
   }, [customColor, customScale, customWidth, customHeight, customDepth, customMetalness, customRoughness, customHeadScale, customLegLength, customArmLength, customTorsoThickness, glowIntensity, glowColor, wireframe, hologram]);
   const [torsoVisible, setTorsoVisible] = useState<boolean>(() => localStorage.getItem('xy_torsoVisible') !== 'false');
   const [morphTargets, setMorphTargets] = useState<Record<string, number>>(() => JSON.parse(localStorage.getItem('xy_morphTargets') || '{}'));
-  const [headStyle, setHeadStyle] = useState<number>(() => parseInt(localStorage.getItem('xy_headStyle') || '0'));
-  const [uploadedHeadName, setUploadedHeadName] = useState<string | null>(() => localStorage.getItem('xy_uploadedHeadName'));
   const [uploadedCharName, setUploadedCharName] = useState<string | null>(() => localStorage.getItem('xy_uploadedCharName'));
 
   useEffect(() => {
     localStorage.setItem('xy_torsoVisible', torsoVisible.toString());
     localStorage.setItem('xy_morphTargets', JSON.stringify(morphTargets));
-    localStorage.setItem('xy_headStyle', headStyle.toString());
-    if (uploadedHeadName) localStorage.setItem('xy_uploadedHeadName', uploadedHeadName);
-    else localStorage.removeItem('xy_uploadedHeadName');
     if (uploadedCharName) localStorage.setItem('xy_uploadedCharName', uploadedCharName);
     else localStorage.removeItem('xy_uploadedCharName');
-  }, [torsoVisible, morphTargets, headStyle, uploadedHeadName, uploadedCharName]);
+  }, [torsoVisible, morphTargets, uploadedCharName]);
   const [uploadedTreeName, setUploadedTreeName] = useState<string | null>(null);
   const [graphicsQuality, setGraphicsQuality] = useState<'high' | 'medium' | 'low' | 'potato'>(() => {
     const savedQuality = localStorage.getItem('xyrtania_quality');
@@ -173,7 +168,6 @@ export default function App() {
 
   // References to invoke in-game actions from absolute HTML DOM target elements
   const triggerJumpRef = useRef<() => void>(() => {});
-  const switchHeadRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     if (localAnimatorRef.current) {
@@ -973,10 +967,6 @@ export default function App() {
         isFirstPerson = !isFirstPerson;
       }
 
-      if (k === 'h') {
-          switchHeadRef.current();
-      }
-
       if (keys[k]) return; // Stop repeating keydown auto-repeat
       keys[k] = true;
 
@@ -1010,19 +1000,6 @@ export default function App() {
     // Kickoff background async preloading of all models to avoid lag spikes
     CharacterAnimator.preloadCharacters(characters);
     
-    let currentHeadStyle = 0;
-    let lastSwitchTime = 0;
-
-    function switchHead() {
-        const now = performance.now();
-        if (now - lastSwitchTime < 500) return;
-        lastSwitchTime = now;
-        
-        currentHeadStyle = (currentHeadStyle + 1) % 4;
-        setHeadStyle(currentHeadStyle);
-        animator.setHeadStyle(currentHeadStyle);
-    }
-
     function initiateJump() {
       // Allow jump if player is on the ground
       if (state.isGrounded && state.jumpPhase !== JumpPhase.PREP) {
@@ -1038,7 +1015,6 @@ export default function App() {
 
     // Connect refs to make these actions callable from the outer React DOM HUD
     triggerJumpRef.current = initiateJump;
-    switchHeadRef.current = switchHead;
 
     // Split-screen touch/mouse active tracking states
     let moveActive = false;
@@ -2359,20 +2335,38 @@ export default function App() {
            peer.animator = remAnim;
         }
 
+        // Render remote players 120ms behind the latest packet so normal network
+        // jitter becomes steady motion between real snapshots instead of a series
+        // of unnaturally fast target-chasing bursts.
+        const renderTime = nowMs - 120;
+        while (peer.snapshots.length >= 2 && peer.snapshots[1].receivedAt <= renderTime) {
+            peer.snapshots.shift();
+        }
+
+        const remoteRenderPosition = peer.state.position.clone();
+        if (peer.snapshots.length >= 2) {
+            const from = peer.snapshots[0];
+            const to = peer.snapshots[1];
+            const duration = Math.max(1, to.receivedAt - from.receivedAt);
+            const alpha = THREE.MathUtils.clamp((renderTime - from.receivedAt) / duration, 0, 1);
+            remoteRenderPosition.lerpVectors(from.position, to.position, alpha);
+        } else if (peer.snapshots.length === 1) {
+            remoteRenderPosition.copy(peer.snapshots[0].position);
+        }
+
         // Adjust remote player Y locally if their client is inactive (e.g. background tab)
-        const pFloorH = worldGrid.getGroundHeight(peer.state.position.x, peer.state.position.z);
+        const pFloorH = worldGrid.getGroundHeight(remoteRenderPosition.x, remoteRenderPosition.z);
         const swimLevel = -0.5 - (remAnim.targetHeight * 0.7 || 1.5);
         const expectedY = Math.max(pFloorH, swimLevel);
         const isJumping = peer.state.animationState && (peer.state.animationState.toLowerCase().includes('jump') || peer.state.animationState.toLowerCase().includes('fall'));
         
-        if (peer.state.position.y < pFloorH - 0.2) {
-            peer.state.position.y = pFloorH;
-        } else if (peer.state.position.y > expectedY + 0.5 && !isJumping) {
-            peer.state.position.y = Math.max(expectedY, peer.state.position.y - dt * 12.0);
+        if (remoteRenderPosition.y < pFloorH - 0.2) {
+            remoteRenderPosition.y = pFloorH;
+        } else if (remoteRenderPosition.y > expectedY + 0.5 && !isJumping) {
+            remoteRenderPosition.y = Math.max(expectedY, remoteRenderPosition.y - dt * 12.0);
         }
 
-        // Interpolate visual positions smoothly
-        remAnim.group.position.lerp(peer.state.position, dt * 10);
+        remAnim.group.position.copy(remoteRenderPosition);
         
         // Match rotation (shortcut for direction interpolation)
         const targetQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), peer.state.direction || 0);
@@ -2793,12 +2787,6 @@ export default function App() {
         >
           <Maximize className="w-5 h-5" />
         </button>
-        <button
-          onClick={() => switchHeadRef.current()}
-          className="bg-black/60 border border-cyan-500/30 text-cyan-400 px-4 py-2 rounded font-mono text-sm uppercase hover:bg-black/80 transition-colors backdrop-blur pointer-events-auto"
-        >
-          Switch Head (H)
-        </button>
       </div>
 
       {/* Map Editor Tool Panel */}
@@ -3009,49 +2997,6 @@ export default function App() {
               onChange={(e) => setTorsoVisible(e.target.checked)}
               className="w-4 h-4 rounded bg-transparent border border-cyan-500/50 accent-cyan-400 cursor-pointer"
             />
-          </div>
-
-          <div className="flex items-center justify-between border-t border-cyan-500/30 pt-3">
-            <span className="text-xs text-cyan-200 font-mono tracking-wide">Head Style</span>
-            <button 
-              onClick={() => switchHeadRef.current()}
-              className="px-2 py-1 bg-cyan-500/20 border border-cyan-500/50 rounded text-xs font-mono text-cyan-300 hover:bg-cyan-500/30 uppercase tracking-wide cursor-pointer transition-colors"
-            >
-              {headStyle === 0 ? 'Original' : headStyle === 1 ? 'Custom GLB' : headStyle === 2 ? 'Cyber Helmet' : 'Clown Head'}
-            </button>
-          </div>
-
-          <div className="flex flex-col gap-2 border-t border-cyan-500/30 pt-3">
-            <label className="text-xs text-cyan-200 font-mono tracking-wide">Custom Head (.glb)</label>
-            <div className="flex flex-col gap-1">
-              <input 
-                type="file" 
-                id="custom-head-upload" 
-                accept=".glb,.gltf" 
-                className="hidden" 
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  setUploadedHeadName(file.name);
-                  const blobUrl = URL.createObjectURL(file);
-                  if (localAnimatorRef.current) {
-                    localAnimatorRef.current.setHeadStyle(1, blobUrl);
-                    setHeadStyle(1);
-                  }
-                }}
-              />
-              <label 
-                htmlFor="custom-head-upload"
-                className="w-full py-1.5 px-3 border border-dashed border-cyan-500/50 hover:border-cyan-400 bg-cyan-500/10 hover:bg-cyan-500/20 rounded text-center text-xs text-cyan-300 font-mono cursor-pointer transition-all uppercase tracking-wider block"
-              >
-                Upload Head GLB
-              </label>
-              {uploadedHeadName && (
-                <div className="text-[10px] text-cyan-400 font-mono text-center truncate">
-                  Loaded: {uploadedHeadName}
-                </div>
-              )}
-            </div>
           </div>
 
           <div className="flex flex-col gap-2 border-t border-cyan-500/30 pt-3">
