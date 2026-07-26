@@ -2295,7 +2295,6 @@ export default function App() {
       });
 
       // --- RENDER REMOTE PLAYERS ---
-      const nowMs = performance.now();
       const nearbyPeers = networkManager.getNearbyPeers(state.position, 500);
       const nearbyPeerIds = new Set(nearbyPeers.map(p => p.id));
 
@@ -2335,20 +2334,27 @@ export default function App() {
            peer.animator = remAnim;
         }
 
-        // Render remote players 120ms behind the latest packet so normal network
-        // jitter becomes steady motion between real snapshots instead of a series
-        // of unnaturally fast target-chasing bursts.
-        const renderTime = nowMs - 120;
-        while (peer.snapshots.length >= 2 && peer.snapshots[1].receivedAt <= renderTime) {
-            peer.snapshots.shift();
-        }
-
         const remoteRenderPosition = peer.state.position.clone();
-        if (peer.snapshots.length >= 2) {
+        // Play remote snapshots using the sender's simulation timestamps. Keep
+        // two updates buffered so irregular Render delivery cannot change the
+        // apparent movement speed.
+        if (peer.playbackAt === undefined && peer.snapshots.length >= 3) {
+            peer.playbackAt = peer.snapshots[0].sentAt;
+        }
+        if (peer.playbackAt !== undefined && peer.snapshots.length >= 2) {
+            const latestSentAt = peer.snapshots[peer.snapshots.length - 1].sentAt;
+            const maxPlaybackAt = peer.snapshots[peer.snapshots.length - 2].sentAt;
+            peer.playbackAt = Math.min(
+                peer.playbackAt + dt * 1000,
+                Math.min(maxPlaybackAt, latestSentAt)
+            );
+            while (peer.snapshots.length >= 2 && peer.snapshots[1].sentAt <= peer.playbackAt) {
+                peer.snapshots.shift();
+            }
             const from = peer.snapshots[0];
             const to = peer.snapshots[1];
-            const duration = Math.max(1, to.receivedAt - from.receivedAt);
-            const alpha = THREE.MathUtils.clamp((renderTime - from.receivedAt) / duration, 0, 1);
+            const duration = Math.max(1, to.sentAt - from.sentAt);
+            const alpha = THREE.MathUtils.clamp((peer.playbackAt - from.sentAt) / duration, 0, 1);
             remoteRenderPosition.lerpVectors(from.position, to.position, alpha);
         } else if (peer.snapshots.length === 1) {
             remoteRenderPosition.copy(peer.snapshots[0].position);

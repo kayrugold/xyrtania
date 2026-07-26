@@ -11,6 +11,7 @@ export class Player extends Schema {
   @type("number") y: number = 0;
   @type("number") z: number = 0;
   @type("number") rotation: number = 0;
+  @type("number") sentAt: number = 0;
   @type("string") avatarId: string = "";
   @type("string") currentAnimation: string = "";
   @type("string") animationState: string = "";
@@ -58,6 +59,7 @@ export class XyrtaniaRoom extends Room<XyrtaniaState> {
             this.checkPlayerRegions(client, player.x, player.z);
         }
         if (data.rotation !== undefined) player.rotation = data.rotation;
+        if (data.sentAt !== undefined) player.sentAt = data.sentAt;
         if (data.avatarId !== undefined) player.avatarId = data.avatarId;
         if (data.currentAnimation !== undefined) player.currentAnimation = data.currentAnimation;
         if (data.animationState !== undefined) player.animationState = data.animationState;

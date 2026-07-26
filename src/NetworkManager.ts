@@ -15,8 +15,9 @@ export interface RemotePlayer {
   lastUpdate: number;
   snapshots: Array<{
     position: THREE.Vector3;
-    receivedAt: number;
+    sentAt: number;
   }>;
+  playbackAt?: number;
   animator?: any;
 }
 
@@ -53,10 +54,15 @@ export class NetworkManager {
   private _lastPositionSaveTime: number = 0;
   private connectionIdentity?: ConnectionIdentity;
 
-  private recordSnapshot(peer: RemotePlayer) {
+  private recordSnapshot(peer: RemotePlayer, sentAt?: number) {
+    const snapshotTime = typeof sentAt === 'number' && Number.isFinite(sentAt)
+      ? sentAt
+      : performance.now();
+    const previous = peer.snapshots[peer.snapshots.length - 1];
+    if (previous && snapshotTime <= previous.sentAt) return;
     peer.snapshots.push({
       position: peer.state.position.clone(),
-      receivedAt: performance.now()
+      sentAt: snapshotTime
     });
     if (peer.snapshots.length > 20) {
       peer.snapshots.splice(0, peer.snapshots.length - 20);
@@ -219,7 +225,7 @@ export class NetworkManager {
         if (data.y !== undefined) peer.state.position.y = data.y;
         if (data.z !== undefined) peer.state.position.z = data.z;
         if (data.rotation !== undefined) peer.state.direction = data.rotation;
-        this.recordSnapshot(peer);
+        this.recordSnapshot(peer, data.sentAt);
         
         if (data.customColor !== undefined) peer.state.customColor = data.customColor;
         if (data.morphTargets !== undefined) peer.state.morphTargets = data.morphTargets;
@@ -442,7 +448,7 @@ export class NetworkManager {
           peer.state.animationState = player.animationState || 'neutral_idle';
           peer.state.isCrouching = player.isCrouching;
           peer.state.isProne = player.isProne;
-          this.recordSnapshot(peer);
+          this.recordSnapshot(peer, player.sentAt);
           try {
               peer.state.morphTargets = player.morphTargetsJson ? JSON.parse(player.morphTargetsJson) : {};
           } catch(e) { peer.state.morphTargets = {}; }
@@ -490,7 +496,7 @@ export class NetworkManager {
               peerToUpdate.state.currentAnimation = player.currentAnimation || 'neutral_idle';
               peerToUpdate.state.isCrouching = player.isCrouching;
               peerToUpdate.state.isProne = player.isProne;
-              this.recordSnapshot(peerToUpdate);
+              this.recordSnapshot(peerToUpdate, player.sentAt);
           });
       });
 
@@ -604,6 +610,7 @@ export class NetworkManager {
         customColor: state.customColor || "",
         customScale: typeof state.customScale === 'number' ? state.customScale : 1.0,
         isCrouching: !!state.isCrouching,
+        sentAt: performance.now(),
         morphTargetsJson: JSON.stringify(state.morphTargets || {}),
         morphTargets: state.morphTargets || {},
         isProne: !!state.isProne
