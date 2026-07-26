@@ -8,6 +8,9 @@ import { NetworkManager } from './NetworkManager';
 import { AccountUI } from './components/AccountUI';
 import { StartMenu } from './components/StartMenu';
 
+const LAND_JUMP_VELOCITY = 9.0;
+const LAND_GRAVITY = 34;
+
 export default function App() {
   const [isStartMenuActive, setIsStartMenuActive] = useState(true);
   const isStartMenuActiveRef = useRef(true);
@@ -1876,11 +1879,11 @@ export default function App() {
           state.jumpProgress += dt;
           if (state.jumpProgress >= 0.05) {
             state.jumpPhase = JumpPhase.LAUNCH;
-            state.verticalVelocity = 10.0;
+            state.verticalVelocity = LAND_JUMP_VELOCITY;
             state.isGrounded = false;
           }
         } else if (!state.isGrounded) {
-          state.verticalVelocity -= 30 * dt;
+          state.verticalVelocity -= LAND_GRAVITY * dt;
         } else {
           state.verticalVelocity = 0;
         }
@@ -2338,14 +2341,17 @@ export default function App() {
         // packets, then gently correct toward a short prediction of the latest
         // authoritative position. This avoids both packet-by-packet bursts and
         // buffered playback stalls.
+        const isJumping = peer.state.animationState && (peer.state.animationState.toLowerCase().includes('jump') || peer.state.animationState.toLowerCase().includes('fall'));
         const packetAge = Math.min(0.15, (performance.now() - peer.lastUpdate) / 1000);
         const remoteRenderPosition = peer.state.position.clone().addScaledVector(peer.state.velocity, packetAge);
+        if (isJumping) {
+            remoteRenderPosition.y -= 0.5 * LAND_GRAVITY * packetAge * packetAge;
+        }
 
         // Adjust remote player Y locally if their client is inactive (e.g. background tab)
         const pFloorH = worldGrid.getGroundHeight(remoteRenderPosition.x, remoteRenderPosition.z);
         const swimLevel = -0.5 - (remAnim.targetHeight * 0.7 || 1.5);
         const expectedY = Math.max(pFloorH, swimLevel);
-        const isJumping = peer.state.animationState && (peer.state.animationState.toLowerCase().includes('jump') || peer.state.animationState.toLowerCase().includes('fall'));
         
         if (remoteRenderPosition.y < pFloorH - 0.2) {
             remoteRenderPosition.y = pFloorH;
@@ -2353,7 +2359,8 @@ export default function App() {
             remoteRenderPosition.y = Math.max(expectedY, remoteRenderPosition.y - dt * 12.0);
         }
 
-        remAnim.group.position.addScaledVector(peer.state.velocity, dt);
+        remAnim.group.position.x += peer.state.velocity.x * dt;
+        remAnim.group.position.z += peer.state.velocity.z * dt;
         const correction = remoteRenderPosition.clone().sub(remAnim.group.position);
         const horizontalCorrectionDistance = Math.hypot(correction.x, correction.z);
         if (horizontalCorrectionDistance > 30 || Math.abs(correction.y) > 30) {
@@ -2368,9 +2375,9 @@ export default function App() {
                 remAnim.group.position.x += correction.x * (correctionStep / horizontalCorrectionDistance);
                 remAnim.group.position.z += correction.z * (correctionStep / horizontalCorrectionDistance);
             }
-            // Vertical motion needs a much faster independent correction so a
-            // jump can land promptly without affecting horizontal run speed.
-            remAnim.group.position.y += THREE.MathUtils.clamp(correction.y, -20 * dt, 20 * dt);
+            // Vertical motion follows the same ballistic prediction as the
+            // sender, avoiding packet-by-packet correction jitter.
+            remAnim.group.position.y = remoteRenderPosition.y;
         }
         
         // Match rotation (shortcut for direction interpolation)
