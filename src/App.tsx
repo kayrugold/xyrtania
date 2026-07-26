@@ -18,6 +18,7 @@ export default function App() {
   const [multiplayerPhase, setMultiplayerPhase] = useState<'idle' | 'waking' | 'terrain' | 'ready'>('idle');
   const [multiplayerWaitSeconds, setMultiplayerWaitSeconds] = useState(0);
   const multiplayerLaunchRef = useRef(false);
+  const selectedMultiplayerNameRef = useRef<string | null>(null);
   useEffect(() => {
     if (multiplayerPhase === 'idle' || multiplayerPhase === 'ready') return;
     const startedAt = Date.now();
@@ -2442,7 +2443,7 @@ export default function App() {
         state.direction = playerRootGroup.rotation.y;
 
         // Network Broadcast
-        state.displayName = localStorage.getItem('xyrtania_display_name') || 'Anonymous';
+        state.displayName = selectedMultiplayerNameRef.current || localStorage.getItem('xyrtania_display_name') || 'Anonymous';
         state.modelUrl = animator.currentModelUrl;
         state.currentAnimation = animator.currentActionName;
         state.animationState = animator.currentActionName;
@@ -2586,12 +2587,13 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleDiagKey);
   }, []);
 
-  const enterMultiplayer = () => {
+  const enterMultiplayer = (identity: { playerId: string; displayName: string }) => {
     setIsAccountRequested(false);
+    selectedMultiplayerNameRef.current = identity.displayName;
     multiplayerLaunchRef.current = true;
     setMultiplayerPhase('waking');
     localStorage.setItem('xyrtania_connection_mode', 'colyseus_render');
-    networkManagerRef.current?.connectToRender();
+    networkManagerRef.current?.connectToRender(identity);
     setConnectionMode('colyseus_render');
   };
 
@@ -2603,11 +2605,7 @@ export default function App() {
   };
 
   const handleMultiplayerSelection = () => {
-    if (localStorage.getItem('xyrtania_setup_complete') === 'true') {
-      enterMultiplayer();
-    } else {
-      setIsAccountRequested(true);
-    }
+    setIsAccountRequested(true);
   };
 
   return (
@@ -2626,6 +2624,7 @@ export default function App() {
       <AccountUI 
         activationRequested={isAccountRequested}
         onAccountReady={enterMultiplayer}
+        onCancel={() => setIsAccountRequested(false)}
         netStatus={netStatus}
         netRoomId={netRoomId}
         netEndpoint={netEndpoint}

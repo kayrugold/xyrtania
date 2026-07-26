@@ -4,7 +4,8 @@ import { Settings, Copy, Check } from 'lucide-react';
 
 export interface AccountUIProps {
   activationRequested?: boolean;
-  onAccountReady?: () => void;
+  onAccountReady?: (identity: { playerId: string; displayName: string }) => void;
+  onCancel?: () => void;
   netStatus?: 'connected' | 'disconnected' | 'reconnecting';
   netRoomId?: string | null;
   netEndpoint?: string;
@@ -15,13 +16,14 @@ export interface AccountUIProps {
 export const AccountUI: React.FC<AccountUIProps> = ({
   activationRequested = false,
   onAccountReady,
+  onCancel,
   netStatus = 'disconnected',
   netRoomId = null,
   netEndpoint = '',
   netPeersCount = 0,
   peerNames = [],
 }) => {
-  const { session, displayName, isSyncing, lastSyncTime, recover, createNew, resetLocal, updateCharacter } = useCryptoAuth();
+  const { session, displayName, isSyncing, lastSyncTime, recover, createNew, getTesterSession, resetLocal, updateCharacter } = useCryptoAuth();
   
   const [isRecovering, setIsRecovering] = useState(false);
   const [phraseInput, setPhraseInput] = useState('');
@@ -37,7 +39,7 @@ export const AccountUI: React.FC<AccountUIProps> = ({
   });
 
   useEffect(() => {
-    if (!isSetupComplete && activationRequested) {
+    if (activationRequested) {
       setIsPanelOpen(true);
     }
     if (displayName && !nameInput) {
@@ -99,21 +101,31 @@ export const AccountUI: React.FC<AccountUIProps> = ({
       setIsSetupComplete(true);
       setIsPanelOpen(false); // Auto-hide
     }
-    onAccountReady?.();
+    onAccountReady?.({ playerId: session.playerId, displayName: nameInput });
   };
 
-  const handleTesterProfile = async () => {
-    setNameInput('Tester');
-    await updateCharacter({ displayName: 'Tester', level: 1, gold: 0, currentChunk: '0,0' });
-    localStorage.setItem('xyrtania_setup_complete', 'true');
-    localStorage.setItem('xyrtania_display_name', 'Tester');
-    setIsSetupComplete(true);
+  const handleUpdateProfile = async () => {
+    await updateCharacter({ displayName: nameInput, level: 1, gold: 0, currentChunk: '0,0' });
+  };
+
+  const handleTesterProfile = () => {
+    const testerSession = getTesterSession();
     setIsPanelOpen(false);
-    onAccountReady?.();
+    onAccountReady?.({ playerId: testerSession.playerId, displayName: 'Tester' });
+  };
+
+  const handleContinue = () => {
+    setIsPanelOpen(false);
+    onAccountReady?.({ playerId: session.playerId, displayName });
+  };
+
+  const handleClose = () => {
+    setIsPanelOpen(false);
+    onCancel?.();
   };
 
   return (
-    <div className={!isSetupComplete && isPanelOpen ? "fixed inset-0 z-[999999] pointer-events-auto bg-black/80 backdrop-blur-sm flex items-center justify-center" : "absolute top-[72px] right-4 z-50 pointer-events-auto flex flex-col items-end gap-2"}>
+    <div className={isPanelOpen && (activationRequested || !isSetupComplete) ? "fixed inset-0 z-[999999] pointer-events-auto bg-black/80 backdrop-blur-sm flex items-center justify-center" : "absolute top-[72px] right-4 z-50 pointer-events-auto flex flex-col items-end gap-2"}>
       {/* Background Syncing Indicator HUD */}
       {isSyncing && (
         <div className="bg-emerald-900/80 border border-emerald-500 rounded px-3 py-1 flex items-center gap-2 shadow-[0_0_10px_rgba(16,185,129,0.5)]">
@@ -148,13 +160,31 @@ export const AccountUI: React.FC<AccountUIProps> = ({
       {isPanelOpen && (
         <div className="bg-black/90 text-white p-4 sm:p-5 rounded shadow-2xl w-[90vw] sm:w-80 max-w-sm max-h-[85vh] overflow-y-auto text-sm font-mono border border-emerald-900/50 backdrop-blur-md scrollbar-thin scrollbar-thumb-gray-700">
           <div className="flex justify-between items-start mb-2 sm:mb-4 border-b border-gray-800 pb-2">
-              <h2 className="text-emerald-400 font-bold">{isSetupComplete ? 'Account Settings' : 'Welcome to Xyrtania'}</h2>
-              {isSetupComplete && (
-                <button onClick={() => setIsPanelOpen(false)} className="text-gray-500 hover:text-white text-xs">
-                  Close [X]
-                </button>
-              )}
+              <h2 className="text-emerald-400 font-bold">{activationRequested ? 'Choose Your Character' : isSetupComplete ? 'Account Settings' : 'Welcome to Xyrtania'}</h2>
+              <button onClick={handleClose} className="text-gray-500 hover:text-white text-xs">
+                Close [X]
+              </button>
           </div>
+
+          {activationRequested && isSetupComplete && !isRecovering && (
+            <div className="mb-4 flex flex-col gap-2 border-b border-gray-800 pb-4">
+              <button
+                type="button"
+                onClick={handleContinue}
+                disabled={!displayName}
+                className="w-full rounded bg-emerald-600 px-3 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Continue as {displayName || 'Saved Character'}
+              </button>
+              <button
+                type="button"
+                onClick={handleTesterProfile}
+                className="w-full rounded border border-cyan-500/40 bg-cyan-950/40 px-3 py-2 text-xs font-bold text-cyan-200 transition-colors hover:bg-cyan-900/50"
+              >
+                Login as Tester
+              </button>
+            </div>
+          )}
           
           <div className="mb-2 sm:mb-4">
             <p className="text-gray-400 text-xs mb-1">Player ID (Public):</p>
@@ -184,7 +214,7 @@ export const AccountUI: React.FC<AccountUIProps> = ({
               />
               {isSetupComplete && (
                 <button 
-                  onClick={handleSyncAndStart}
+                  onClick={handleUpdateProfile}
                   disabled={isSyncing || nameInput === displayName}
                   className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:hover:bg-emerald-600 rounded px-3 py-1.5 text-xs whitespace-nowrap transition-colors"
                 >
@@ -347,10 +377,10 @@ export const AccountUI: React.FC<AccountUIProps> = ({
 
               <div className="flex justify-between gap-2 mt-1 sm:mt-2 border-t border-gray-800 pt-2 sm:pt-3">
                 <button onClick={() => setIsRecovering(true)} className="bg-blue-900/30 hover:bg-blue-800/50 rounded px-2 py-1 text-[10px] text-blue-300 border border-blue-900/50 transition-colors">
-                  Recover Device
+                  Recover Account
                 </button>
                 <button onClick={handleCreateNew} className="bg-red-900/30 hover:bg-red-800/50 rounded px-2 py-1 text-[10px] text-red-300 border border-red-900/50 transition-colors" title="Generates a whole new ID">
-                  New Identity
+                  Create / Switch Account
                 </button>
               </div>
             </div>

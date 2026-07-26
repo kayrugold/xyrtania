@@ -8,6 +8,7 @@ export interface AuthSession {
 
 export class CryptoAuth {
   private static readonly STORAGE_KEY = 'xyrtania_auth_session';
+  private static readonly TESTER_STORAGE_KEY = 'xyrtania_tester_auth_session';
 
   /**
    * Initializes or loads the cryptographic session.
@@ -30,6 +31,27 @@ export class CryptoAuth {
    * Saves to PWA localStorage.
    */
   public static generateNewSession(): AuthSession {
+    return this.generateSessionForKey(this.STORAGE_KEY);
+  }
+
+  /**
+   * Returns a persistent development-only identity without touching the
+   * player's normal account session.
+   */
+  public static getOrCreateTesterSession(): AuthSession {
+    const existing = localStorage.getItem(this.TESTER_STORAGE_KEY);
+    if (existing) {
+      try {
+        return JSON.parse(existing) as AuthSession;
+      } catch (e) {
+        console.error('Failed to parse tester session, creating a new one', e);
+      }
+    }
+
+    return this.generateSessionForKey(this.TESTER_STORAGE_KEY);
+  }
+
+  private static generateSessionForKey(storageKey: string): AuthSession {
     // Generate a fresh random wallet. This uses underlying secure entropy.
     const wallet = Wallet.createRandom();
     
@@ -43,7 +65,7 @@ export class CryptoAuth {
       mnemonic: wallet.mnemonic.phrase // 12-word BIP-39 recovery phrase
     };
 
-    this.saveSession(session);
+    localStorage.setItem(storageKey, JSON.stringify(session));
     return session;
   }
 

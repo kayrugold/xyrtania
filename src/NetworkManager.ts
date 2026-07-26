@@ -3,7 +3,11 @@ import { Client, Room } from 'colyseus.js';
 import { PlayerState } from './types';
 import * as THREE from 'three';
 import { joinRoom, selfId } from '@trystero-p2p/torrent';
-import { CryptoAuth } from './auth/CryptoAuth';
+
+export interface ConnectionIdentity {
+  playerId: string;
+  displayName: string;
+}
 
 export interface RemotePlayer {
   id: string;
@@ -43,6 +47,7 @@ export class NetworkManager {
   private lastKnownState?: PlayerState;
   private lastSentAnimation?: string;
   private _lastPositionSaveTime: number = 0;
+  private connectionIdentity?: ConnectionIdentity;
 
   public get sessionId(): string | undefined {
     if (this.connectionMode !== 'p2p') {
@@ -93,9 +98,10 @@ export class NetworkManager {
     }
   }
 
-  public connectToRender() {
+  public connectToRender(identity: ConnectionIdentity) {
     if (this.status === 'connected' && this.connectionMode === 'colyseus_render') return;
     this.disconnect();
+    this.connectionIdentity = identity;
     this.connectionMode = 'colyseus_render';
     this.isDisconnected = false;
     localStorage.setItem('xyrtania_connection_mode', 'colyseus_render');
@@ -249,17 +255,22 @@ export class NetworkManager {
     if (this.onPeersChange) this.onPeersChange(0);
     this.status = 'reconnecting';
     if (this.onStatusChange) this.onStatusChange(this.status);
+
+    if (!this.connectionIdentity) {
+      console.error('Multiplayer connection cancelled: no identity was selected.');
+      this.status = 'disconnected';
+      if (this.onStatusChange) this.onStatusChange(this.status);
+      return;
+    }
     
     try {
-      const initialDisplayName = localStorage.getItem('xyrtania_display_name') || 'Anonymous';
+      const initialDisplayName = this.connectionIdentity.displayName;
       const initialAvatarId = '/assets/character/Xyrtania_Male_NoMorphs.glb'; // default
 
       // Clean up any stale old-format session variables
       localStorage.removeItem('xyrtania_last_room_id');
       localStorage.removeItem('xyrtania_last_session_id');
       
-      const session = CryptoAuth.initSession();
-
       const savedToken = localStorage.getItem('xyrtania_reconnection_token');
 
       const savedXStr = localStorage.getItem('xyrtania_last_x');
@@ -269,7 +280,7 @@ export class NetworkManager {
       const joinOptions: any = {
           displayName: initialDisplayName,
           avatarId: initialAvatarId,
-          playerId: session.playerId
+          playerId: this.connectionIdentity.playerId
       };
 
       if (savedXStr !== null && savedYStr !== null && savedZStr !== null) {

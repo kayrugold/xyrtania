@@ -8,7 +8,8 @@ export function useCryptoAuth() {
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(null);
 
   useEffect(() => {
-    // On load, fetch existing or create new session (Serverless PWA friendly - no standard signup)
+    // Load the saved cryptographic identity, but do not silently choose a
+    // multiplayer display name or begin a connection.
     const init = CryptoAuth.initSession();
     setSession(init);
     
@@ -16,10 +17,6 @@ export function useCryptoAuth() {
     const savedName = localStorage.getItem('xyrtania_display_name');
     if (savedName) {
       setDisplayName(savedName);
-    } else {
-      const generated = 'Anonymous ' + Math.floor(Math.random() * 1000);
-      setDisplayName(generated);
-      localStorage.setItem('xyrtania_display_name', generated);
     }
 
     // Attempt to fetch fresh identity from the server
@@ -115,7 +112,10 @@ export function useCryptoAuth() {
   const createNew = () => {
     const newSession = CryptoAuth.generateNewSession();
     setSession(newSession);
+    setDisplayName('');
   };
+
+  const getTesterSession = () => CryptoAuth.getOrCreateTesterSession();
   
   const resetLocal = () => {
     CryptoAuth.clearSession();
@@ -152,5 +152,5 @@ export function useCryptoAuth() {
     setIsSyncing(false);
   };
 
-  return { session, displayName, isSyncing, lastSyncTime, recover, createNew, updateCharacter, resetLocal };
+  return { session, displayName, isSyncing, lastSyncTime, recover, createNew, getTesterSession, updateCharacter, resetLocal };
 }
