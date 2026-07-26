@@ -2,10 +2,13 @@
 
 ## Living Game Design Document
 
-**Document status:** Early design  
-**Project status:** Working multiplayer engine and evolving game  
-**Current design build:** Draft 0.1  
-**Last updated:** July 24, 2026
+**Document status:** Living design checkpoint
+
+**Project status:** Working multiplayer engine and evolving game
+
+**Current design build:** Draft 0.2
+
+**Last updated:** July 25, 2026
 
 This is a living document. It describes both established creative direction and
 ideas that still require design, prototyping, and playtesting.
@@ -22,9 +25,11 @@ ideas that still require design, prototyping, and playtesting.
 
 **Established**
 
-Xyrtania is a 3D action MMORPG in which a shipwrecked adventurer explores a
-mysterious island, survives its wilderness, forms relationships, builds a home,
-and may help create and govern an entire civilization.
+Xyrtania is a 3D action MMORPG in which an adventurer reaches a mysterious lost
+island, survives its wilderness, forms relationships, builds a home, and may
+help create and govern an entire civilization. Early expeditions are
+shipwrecked; later arrivals may reach a dock made safe through the world's
+development.
 
 The game combines the immediate, character-level experience of an open-world
 action role-playing game with survival, construction, social simulation, city
@@ -50,13 +55,14 @@ identity, systems, terminology, and presentation.
 **Established**
 
 The player is an adventurer searching for the legendary island of Xyrtania,
-rumored to lie off the coast of Baja California. Their expedition ends in
-disaster when their ship, aircraft, hot-air balloon, or other vessel crashes on
-the island.
+rumored to lie off the coast of Baja California. In the world's early history,
+their expedition ends in disaster when their ship, aircraft, hot-air balloon,
+or other vessel crashes on the island. Later characters may arrive safely after
+the world's people establish docks, lighthouses, and reliable navigation.
 
 Character creation unfolds during the journey rather than in an isolated menu.
-The player meets and interacts with fellow travelers before the crash. These
-early choices begin establishing:
+The player meets and interacts with fellow travelers before reaching Xyrtania.
+These early choices begin establishing:
 
 - Friendships and rivalries.
 - Practical skills and traits.
@@ -252,8 +258,6 @@ read remain open design questions.
 
 ---
 
-## Next Design Round
-
 ## 11. Combat Philosophy
 
 **Established direction**
@@ -368,25 +372,36 @@ game is punishing me for continuing to play.”
 
 ## 15. Progression Without Character Levels
 
-**Established direction; skill tree remains open**
+**Established direction**
 
 Xyrtania has no overall character level. Progression is distributed across
 knowledge, practiced skills, physical condition, social access, equipment, and
 technology.
 
-Players improve through a mixture of:
+Players learn through a mixture of:
 
-- Performing relevant actions.
-- Training and repeated practice.
+- Meaningful practice and experimentation.
 - Teachers and mentors.
-- Skill trees and technique prerequisites.
-- Books, discoveries, experimentation, and cultural knowledge.
+- Books, discoveries, observation, and cultural knowledge.
 - Membership and social access. For example, a barracks trainer may teach only
   guards or soldiers.
 
-Frequent jumping and sustained movement might improve aerobic capabilities.
+Progression must not become a disguised level grind. Firing a weapon thousands
+of times should not yield a procession of tiny accuracy increases. Practice is
+valuable when it develops player mastery, physical conditioning, understanding,
+or produces a meaningful breakthrough such as a new combat technique.
+
+The complete techniques already exist within the world's possible knowledge.
+The challenge is discovering, understanding, and executing them. A character
+might learn Wind Fist quickly from a capable trainer, reconstruct it from a
+book, witness part of it in combat, or independently discover it after
+intentional practice in an unusually windy environment. Independent discovery
+is possible but rare and contextual; blind repetition is not enough.
+
 Strength grows through relevant work and training but can decline through long
-inactivity. A character's visible physique should respond to what they do.
+inactivity. A character's visible physique and current execution should respond
+to what they do. Learned knowledge does not disappear merely because physical
+conditioning wanes.
 
 Every character theoretically has the opportunity to master everything, but
 doing so should be a life-scale achievement that could take approximately ten
@@ -463,23 +478,281 @@ state or character progression.
 
 ## 18. Time and World Turns
 
-**Tentative**
+**Established direction; exact timing requires simulation prototyping**
 
-One proposed structure combines real-time character play with a turn-like world
-simulation. At midnight, the day ends and NPC records, characters, settlements,
-and civilizations receive an opportunity to process their next world-state
-changes. The island can be understood as a strategic gameboard beneath the 3D
-world.
+Single-player advances its larger simulation when the player sleeps. Midnight
+can still produce a brief transition notification, but it does not force an
+active player to stop.
 
-This idea requires further design because a persistent MMORPG cannot simply
-pause all active players at midnight. The system may ultimately use scheduled
-daily simulation ticks, staggered processing, or another approach that preserves
-the feeling of a world turn without interrupting real-time play.
+Multiplayer remains continuous. It never pauses all active players for a global
+turn. NPCs follow schedules and persistent plans. Strategic changes are
+processed incrementally through scheduled jobs, event queues, or staggered
+simulation ticks. A daily transition notification may summarize important
+changes without interrupting real-time play.
+
+NPCs outside every player's area of interest exist as lightweight records,
+intentions, routes, schedules, and strategic tokens. Their full 3D bodies,
+animation, navigation, and immediate behavior load only when a player is close
+enough to observe or interact with them.
+
+## 19. Xyrtania as a Lost World
+
+**Established**
+
+Xyrtania is a hidden place on the real Earth, rumored to lie in the Pacific off
+the coast of Baja California. Its tone draws on the lost-world tradition: a
+remote land of stranded expeditions, ancient mysteries, magic, dragons, and
+societies that developed beyond the world's awareness.
+
+The night sky is grounded in the real stars that would be visible from that
+location and time. The island's supernatural elements coexist with this
+recognizable Earth rather than replacing it.
+
+Those who found Xyrtania historically did not return because the island would
+not release them. Ships attempting to cross the outer reef encounter violent
+waves and other forces that drive them back or wreck them. The surrounding sea
+can still support exploration, fishing, trade, and pirate conflict inside the
+boundary.
+
+The origin and purpose of the barrier remain open narrative mysteries.
+
+## 20. A World Whose Introduction Changes
+
+**Established**
+
+The multiplayer world's history changes how future characters arrive.
+
+Before safe navigation, lighthouses, and functioning docks, expeditions crash
+on the shore. The shipboard journey, relationships, choices, and disaster form
+the opening.
+
+After civilizations establish the necessary maritime capabilities, new
+characters still experience a voyage and make formative decisions, but their
+ship can reach a dock safely. Xyrtania may remain distant and mysterious while
+developing limited awareness and trade relationships with outsiders.
+
+This change is permanent world history, not a cosmetic variation. Later players
+enter a world improved by earlier players and NPCs. Who first trades with
+Xyrtania, how much outsiders know, and whether safe arrival introduces new
+threats remain open questions.
+
+## 21. The Personal Skill Constellation
+
+**Established structure; individual nodes remain expandable**
+
+Personal progression is presented as a constellation rather than a conventional
+level tree. The player can recognize broad regions while many individual stars
+and connections remain hidden until experience gives them meaning.
+
+The eight broad regions are:
+
+- **Body:** conditioning, movement, coordination, resilience, and physical
+  control.
+- **Combat:** focus, timing, spacing, defense, weapon disciplines, tactics, and
+  martial techniques.
+- **Wilderness:** navigation, tracking, foraging, shelter, animals, weather, and
+  field survival.
+- **Craft:** tools, materials, construction, repair, production, and invention.
+- **Healing:** first aid, medicine, surgery, sanitation, recovery, and magical
+  healing.
+- **Mysticism:** affinities, perception of supernatural forces, magical
+  disciplines, and their practical expression.
+- **Discovery:** observation, experimentation, scholarship, mapping, and the
+  recognition of unknown knowledge.
+- **Society:** language, persuasion, teaching, trade, law, leadership,
+  diplomacy, and cultural understanding.
+
+Stars may represent:
+
+- **Affinities:** unusual sensitivity or potential shaped by the character's
+  life and choices.
+- **Knowledge seeds:** evidence that something exists without full
+  understanding.
+- **Techniques:** actions the character can deliberately perform.
+- **Insight links:** connections that allow knowledge from different regions to
+  combine.
+
+Wind Fist, for example, is not merely a Combat unlock. It may connect Combat
+timing, Body control, and Mysticism through a wind affinity or acquired
+understanding.
+
+### Discovery lifecycle
+
+Knowledge commonly moves through:
+
+1. **Unknown:** The character has no meaningful awareness of the possibility.
+2. **Affinity:** Their history or nature makes certain clues easier to notice.
+3. **Hinted:** Something unusual occurs—enough to make the player wonder what
+   happened.
+4. **Pursued:** The character intentionally investigates, practices, studies, or
+   seeks help.
+5. **Breakthrough:** The character produces or recognizes a new result.
+6. **Understood:** The result can be performed or applied deliberately.
+7. **Teachable:** The character understands it well enough to transmit it
+   reliably.
+
+The best hints create the reaction: “Wait—that was different. What was that?”
+A flash of motion, altered sound, unusual wind response, partial gesture, or NPC
+reaction may reveal a possibility without displaying a progress bar.
+
+Affinities are bestowed through character history—especially decisions during
+the introductory voyage and shipwreck—not selected from a class menu. They
+guide sensitivity and opportunity without permanently locking other paths.
+
+## 22. Knowledge as a Living World System
+
+**Established**
+
+Knowledge belongs to people, communities, and institutions—not solely to an
+interface tree. A useful progression for an idea is:
+
+1. Unknown.
+2. Witnessed or rumored.
+3. Studied.
+4. Understood.
+5. Reproducible.
+6. Institutionally adopted.
+
+Witnessed abilities and objects can spread organically. An NPC who sees an
+unfamiliar martial technique may describe it to others. A craftsperson may
+inspect an imported compass. A soldier may report an arquebus to an officer.
+Travelers, markets, teachers, books, demonstrations, espionage, war, and
+apprenticeship move knowledge through the world.
+
+Intentional teaching accelerates and improves this process, but it is not the
+only path. Inaccurate rumors, incomplete copies, secrecy, cultural resistance,
+and scarcity can slow it.
+
+A traveler may carry an arquebus into a nation that has not discovered it. The
+nation immediately knows that such a weapon exists, but possession does not
+automatically create an arquebus industry. Scholars and craftspeople must
+understand its materials, manufacturing, ammunition, training, supply, and safe
+use before the capability becomes institutional.
+
+## 23. Three Interdependent Progression Scales
+
+**Established architecture**
+
+Xyrtania has three related progression systems rather than one universal
+technology tree.
+
+### 23.1 Personal Skill Constellation
+
+Players and NPCs discover, practice, combine, and teach individual knowledge.
+It governs what a person understands and can execute.
+
+### 23.2 Municipal Development Blueprint
+
+Mayors, governors, councils, and authorized officials access settlement
+planning through an in-world blueprint or planning surface in their office.
+This layer concerns local capability:
+
+- Roads, water, sanitation, housing, defenses, markets, docks, schools, and
+  workshops.
+- Labor, materials, maintenance, zoning, logistics, and public welfare.
+- The settlement's ability to reproduce and benefit from known technology.
+
+A city may independently discover or adopt a capability before the wider
+nation. Local shops and specialists can turn an imported object into practical
+knowledge that later spreads outward.
+
+### 23.3 Civilization Capability Tree
+
+Rulers and authorized national leaders access a strategic map from an in-world
+office. This layer concerns civilization-scale capacity:
+
+- Research and education.
+- Military doctrine and standardized equipment.
+- Roads, trade networks, diplomacy, resource security, and expansion.
+- Laws, administration, institutions, and coordinated projects.
+- The ability to reproduce technology reliably across many settlements.
+
+The tree measures institutional capability, not whether someone has heard of an
+idea.
+
+### Interaction among the scales
+
+A person may invent a compass before their city can manufacture one. A city may
+build a thriving compass trade before the nation standardizes navigation. A
+nation may fund schools or roads that make personal discovery and municipal
+adoption easier.
+
+Knowledge therefore flows upward, downward, and sideways. No scale automatically
+owns every discovery, and players are not the only inventors.
+
+## 24. Players and NPCs as Peer World Actors
+
+**Established**
+
+NPCs can learn, invent, teach, govern, found settlements, conduct trade, wage
+war, and make strategic decisions through the same world logic available to
+players. Their interfaces and simulation detail may differ, but their actions
+are not decorative imitations.
+
+A player may become mayor or ruler through reputation, appointment, inheritance,
+election, conquest, or founding a polity. An NPC can pursue the same offices and
+may compete with or cooperate with the player.
+
+Authority grants access to tools and responsibilities; it does not transform
+the character into an omniscient controller. Orders require people, resources,
+time, communication, and compliance.
+
+## 25. The Strategic World Board
+
+**Established architecture; exact grid and tick rates remain open**
+
+Beneath the continuous 3D world is a strategic representation of territories,
+routes, resources, settlements, threats, armies, trade, and influence. It is
+not a separate fictional world; it is a lower-detail model of the same place.
+
+For example:
+
+1. Traders maintain a roadside market near the village of Bali.
+2. A player disturbs a Spider Queen in a neighboring cave.
+3. The Spider Queen assembles an army and captures the market's strategic
+   area.
+4. The occupied route interrupts trade and Bali's economy suffers.
+5. News, shortages, prices, travelers, and local behavior communicate the
+   consequence.
+6. A player or NPC force can attack, negotiate with, avoid, or exploit the
+   Spider Queen.
+7. If the threat is removed, control and trade can gradually recover.
+
+When no player is present, this conflict is represented by economical strategic
+state. Near a player, the relevant terrain, inhabitants, forces, and immediate
+behavior become full 3D gameplay. This separation is required for a world with
+many active NPCs to remain technically feasible.
+
+## 26. Death, Retrieval, and World Cleanup
+
+**Established direction; exact timers require playtesting**
+
+When a character dies, carried possessions remain at the death location so the
+owner or another character has an opportunity to retrieve them. The world must
+clearly communicate ownership rules, danger, and remaining recovery time.
+
+Unrecovered items decay, are scavenged, or are removed after an appropriate
+period. Valuable or narratively important objects may follow special rules.
+This preserves consequence and recovery stories without filling the persistent
+world with abandoned objects.
 
 ---
 
-## Next Design Round
+## Deferred Design Work
 
-The next interview round will define the world's clock and the relationship
-between real-time action, NPC schedules, settlement simulation, and strategic
-civilization turns.
+This checkpoint intentionally leaves room for future design. Major subjects to
+return to include:
+
+- The detailed stars and cross-links in every personal skill region.
+- Complete municipal and civilization capability trees.
+- The precise simulation clock, processing cadence, and notification design.
+- Aging, inheritance, permanent death, and succession.
+- External trade partners and the consequences of wider world awareness.
+- The supernatural barrier, Fire and Ice powers, and the island's deeper
+  history.
+- Political appointment, elections, law, war, diplomacy, and governance.
+- Journal privacy, moderation, and sharing.
+- Numerical balance, interface presentation, and implementation sequencing.
+
+These are deferred rather than forgotten. Xyrtania's design document remains
+living and should grow alongside prototypes, playtests, and development.
