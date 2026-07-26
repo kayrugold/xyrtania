@@ -1548,9 +1548,9 @@ export class CharacterAnimator {
     } else if (state.jumpPhase !== JumpPhase.IDLE && state.jumpPhase !== JumpPhase.RUNNING) {
       this.playAction('jump');
     } else {
-      if (state.speed > 7) { // Run speed
+      if (state.speed > 8.5) { // Run speed
         this.playAction('run');
-      } else if (state.speed > 3.5) {
+      } else if (state.speed > 4.25) {
         this.playAction('jog');
       } else if (state.speed > 0.1) {
         this.playAction('walk');

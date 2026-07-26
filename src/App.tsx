@@ -1764,7 +1764,7 @@ export default function App() {
       // We want walk -> jog -> run, so we use a low acceleration factor when running
       // so the player naturally transitions through the animation thresholds.
       
-      let baseSpeed = 10;
+      let baseSpeed = 12;
       if (isSwimmingNow) baseSpeed = 8;
       else if (isProneNow) baseSpeed = 2;
       else if (isCrouchingNow) baseSpeed = 4.5;
@@ -2216,7 +2216,7 @@ export default function App() {
 
         // Dampen the running zoom-out lag specifically for the bulkier character (base_male_0)
         if (animator.currentModelUrl && animator.currentModelUrl.includes('base_male_0')) {
-          const speedFactor = Math.min(1.0, state.speed / 10);
+          const speedFactor = Math.min(1.0, state.speed / 12);
           currentCamDist -= speedFactor * 1.25;
         }
           
@@ -2354,8 +2354,18 @@ export default function App() {
         }
 
         remAnim.group.position.addScaledVector(peer.state.velocity, dt);
-        const correctionAlpha = 1 - Math.exp(-8 * dt);
-        remAnim.group.position.lerp(remoteRenderPosition, correctionAlpha);
+        const correction = remoteRenderPosition.clone().sub(remAnim.group.position);
+        const correctionDistance = correction.length();
+        if (correctionDistance > 30) {
+            // Treat genuinely large changes as teleports rather than making the
+            // character sprint across the world to catch up.
+            remAnim.group.position.copy(remoteRenderPosition);
+        } else if (correctionDistance > 0.001) {
+            // Authoritative correction may add at most 1.5 world units/second
+            // to the transmitted movement speed.
+            const correctionStep = Math.min(correctionDistance, 1.5 * dt);
+            remAnim.group.position.addScaledVector(correction, correctionStep / correctionDistance);
+        }
         
         // Match rotation (shortcut for direction interpolation)
         const targetQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), peer.state.direction || 0);
