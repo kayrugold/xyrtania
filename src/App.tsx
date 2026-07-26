@@ -2288,6 +2288,15 @@ export default function App() {
             // Also ensure we are on layer 0
             mesh.layers.set(0);
             if (mesh.material) {
+                // GLB clones can share material instances. Isolate the local
+                // character before changing first-person render flags so
+                // remote players using the same model remain visible.
+                if (!mesh.userData.localFirstPersonMaterialIsolated) {
+                    mesh.material = Array.isArray(mesh.material)
+                        ? mesh.material.map(material => material.clone())
+                        : mesh.material.clone();
+                    mesh.userData.localFirstPersonMaterialIsolated = true;
+                }
                 const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
                 materials.forEach(mat => {
                     mat.colorWrite = !isFirstPerson;
