@@ -1876,11 +1876,11 @@ export default function App() {
           state.jumpProgress += dt;
           if (state.jumpProgress >= 0.05) {
             state.jumpPhase = JumpPhase.LAUNCH;
-            state.verticalVelocity = 15.5; // snappier, bolder jump
+            state.verticalVelocity = 10.0;
             state.isGrounded = false;
           }
         } else if (!state.isGrounded) {
-          state.verticalVelocity -= 45 * dt; // slightly stronger gravity
+          state.verticalVelocity -= 30 * dt;
         } else {
           state.verticalVelocity = 0;
         }
