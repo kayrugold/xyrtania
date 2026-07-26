@@ -206,7 +206,7 @@ export class NetworkManager {
         if (data.velocityX !== undefined) peer.state.velocity.x = data.velocityX;
         if (data.velocityY !== undefined) peer.state.velocity.y = data.velocityY;
         if (data.velocityZ !== undefined) peer.state.velocity.z = data.velocityZ;
-        peer.state.speed = peer.state.velocity.length();
+        peer.state.speed = Math.hypot(peer.state.velocity.x, peer.state.velocity.z);
         
         if (data.customColor !== undefined) peer.state.customColor = data.customColor;
         if (data.morphTargets !== undefined) peer.state.morphTargets = data.morphTargets;
@@ -429,7 +429,7 @@ export class NetworkManager {
           peer.state.isCrouching = player.isCrouching;
           peer.state.isProne = player.isProne;
           peer.state.velocity.set(player.velocityX, player.velocityY, player.velocityZ);
-          peer.state.speed = peer.state.velocity.length();
+          peer.state.speed = Math.hypot(peer.state.velocity.x, peer.state.velocity.z);
           try {
               peer.state.morphTargets = player.morphTargetsJson ? JSON.parse(player.morphTargetsJson) : {};
           } catch(e) { peer.state.morphTargets = {}; }
@@ -446,7 +446,7 @@ export class NetworkManager {
               peerToUpdate.state.position.z = player.z;
               peerToUpdate.state.direction = player.rotation;
               peerToUpdate.state.velocity.set(player.velocityX, player.velocityY, player.velocityZ);
-              peerToUpdate.state.speed = peerToUpdate.state.velocity.length();
+              peerToUpdate.state.speed = Math.hypot(peerToUpdate.state.velocity.x, peerToUpdate.state.velocity.z);
               peerToUpdate.state.modelUrl = player.avatarId || '/assets/character/Xyrtania_Male_NoMorphs.glb';
               
               const oldDisplayName = peerToUpdate.state.displayName;
@@ -593,7 +593,7 @@ export class NetworkManager {
         customScale: typeof state.customScale === 'number' ? state.customScale : 1.0,
         isCrouching: !!state.isCrouching,
         velocityX: typeof state.velocity.x === 'number' ? state.velocity.x : 0,
-        velocityY: typeof state.velocity.y === 'number' ? state.velocity.y : 0,
+        velocityY: typeof state.verticalVelocity === 'number' ? state.verticalVelocity : 0,
         velocityZ: typeof state.velocity.z === 'number' ? state.velocity.z : 0,
         morphTargetsJson: JSON.stringify(state.morphTargets || {}),
         morphTargets: state.morphTargets || {},

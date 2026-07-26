@@ -2355,16 +2355,22 @@ export default function App() {
 
         remAnim.group.position.addScaledVector(peer.state.velocity, dt);
         const correction = remoteRenderPosition.clone().sub(remAnim.group.position);
-        const correctionDistance = correction.length();
-        if (correctionDistance > 30) {
+        const horizontalCorrectionDistance = Math.hypot(correction.x, correction.z);
+        if (horizontalCorrectionDistance > 30 || Math.abs(correction.y) > 30) {
             // Treat genuinely large changes as teleports rather than making the
             // character sprint across the world to catch up.
             remAnim.group.position.copy(remoteRenderPosition);
-        } else if (correctionDistance > 0.001) {
-            // Authoritative correction may add at most 1.5 world units/second
-            // to the transmitted movement speed.
-            const correctionStep = Math.min(correctionDistance, 1.5 * dt);
-            remAnim.group.position.addScaledVector(correction, correctionStep / correctionDistance);
+        } else {
+            if (horizontalCorrectionDistance > 0.001) {
+                // Horizontal correction may add at most 1.5 world units/second
+                // to the transmitted movement speed.
+                const correctionStep = Math.min(horizontalCorrectionDistance, 1.5 * dt);
+                remAnim.group.position.x += correction.x * (correctionStep / horizontalCorrectionDistance);
+                remAnim.group.position.z += correction.z * (correctionStep / horizontalCorrectionDistance);
+            }
+            // Vertical motion needs a much faster independent correction so a
+            // jump can land promptly without affecting horizontal run speed.
+            remAnim.group.position.y += THREE.MathUtils.clamp(correction.y, -20 * dt, 20 * dt);
         }
         
         // Match rotation (shortcut for direction interpolation)
