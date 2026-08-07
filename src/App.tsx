@@ -2219,13 +2219,23 @@ export default function App() {
         // Calculate dynamic distance: Zoom in when looking up or down
         const pitchRatio = Math.abs(cameraPitch) / 1.4;
         const scaledBaseDistance = baseCameraDistance * heightScale;
-        let currentCamDist = scaledBaseDistance - ((3.8 * heightScale) * pitchRatio);
+        // Looking steeply up or down used to collapse the orbit distance from
+        // 4.2 units to roughly 0.4. On touch devices that could put the camera
+        // inside the character's always-on-top nametag sprite, allowing its
+        // canvas quad to cover the viewport. Preserve the dynamic zoom while
+        // keeping the camera outside the character and nametag.
+        const minimumThirdPersonDistance = 2.2 * heightScale;
+        let currentCamDist = Math.max(
+          minimumThirdPersonDistance,
+          scaledBaseDistance - ((3.8 * heightScale) * pitchRatio),
+        );
 
         // Dampen the running zoom-out lag specifically for the bulkier character (base_male_0)
         if (animator.currentModelUrl && animator.currentModelUrl.includes('base_male_0')) {
           const speedFactor = Math.min(1.0, state.speed / 12);
           currentCamDist -= speedFactor * 1.25;
         }
+        currentCamDist = Math.max(minimumThirdPersonDistance, currentCamDist);
           
         // Center camera directly on the player
         const actualFocalPoint = focalPoint.clone();

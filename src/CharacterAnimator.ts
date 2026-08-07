@@ -1308,7 +1308,12 @@ export class CharacterAnimator {
     this.currentNametag = name;
 
     if (!this.nametagSprite) {
-        this.nametagSprite = new THREE.Sprite(new THREE.SpriteMaterial({ depthTest: false }));
+        this.nametagSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+          depthTest: false,
+          depthWrite: false,
+          transparent: true,
+          alphaTest: 0.01,
+        }));
         this.group.add(this.nametagSprite);
     }
     // Put text above head, scale should map to canvas aspect ratio
