@@ -1304,6 +1304,20 @@ export class CharacterAnimator {
   }
 
   public updateNametag(name: string) {
+    // Diagnostic safeguard: mobile/tablet GPUs are currently rendering these
+    // world-space sprites at an invalid scale and can obscure the entire view.
+    // Keep desktop nameplates enabled so the two render paths can be compared.
+    if (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) {
+      if (this.nametagSprite) {
+        this.group.remove(this.nametagSprite);
+        this.nametagSprite.material.map?.dispose();
+        this.nametagSprite.material.dispose();
+        this.nametagSprite = null;
+      }
+      this.currentNametag = '';
+      return;
+    }
+
     if (!name || name === this.currentNametag) return;
     this.currentNametag = name;
 
