@@ -21,7 +21,7 @@ export class CharacterAnimator {
   
   private basePrefix = '';
   private currentNametag = '';
-  private nametagSprite: THREE.Sprite | null = null;
+  private nametagSprite: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null = null;
   private innerMesh: THREE.Object3D | null = null;
   private baseYOffset = 0;
   public targetHeight = 2.2;
@@ -1304,30 +1304,27 @@ export class CharacterAnimator {
   }
 
   public updateNametag(name: string) {
-    // Diagnostic safeguard: mobile/tablet GPUs are currently rendering these
-    // world-space sprites at an invalid scale and can obscure the entire view.
-    // Keep desktop nameplates enabled so the two render paths can be compared.
-    if (typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches) {
-      if (this.nametagSprite) {
-        this.group.remove(this.nametagSprite);
-        this.nametagSprite.material.map?.dispose();
-        this.nametagSprite.material.dispose();
-        this.nametagSprite = null;
-      }
-      this.currentNametag = '';
-      return;
-    }
-
     if (!name || name === this.currentNametag) return;
     this.currentNametag = name;
 
     if (!this.nametagSprite) {
-        this.nametagSprite = new THREE.Sprite(new THREE.SpriteMaterial({
+        this.nametagSprite = new THREE.Mesh(
+          new THREE.PlaneGeometry(1, 1),
+          new THREE.MeshBasicMaterial({
           depthTest: false,
           depthWrite: false,
           transparent: true,
           alphaTest: 0.01,
+          side: THREE.DoubleSide,
         }));
+        // Billboard the ordinary plane explicitly. This avoids the specialized
+        // Sprite vertex path that distorts scale on affected tablet GPUs.
+        this.nametagSprite.onBeforeRender = (_renderer, _scene, camera) => {
+          if (!this.nametagSprite) return;
+          const parentWorldRotation = new THREE.Quaternion();
+          this.nametagSprite.parent?.getWorldQuaternion(parentWorldRotation);
+          this.nametagSprite.quaternion.copy(parentWorldRotation.invert().multiply(camera.quaternion));
+        };
         this.group.add(this.nametagSprite);
     }
     // Put text above head, scale should map to canvas aspect ratio
@@ -1459,6 +1456,16 @@ export class CharacterAnimator {
   }
 
   public update(state: PlayerState, dt: number) {
+    if (this.nametagSprite) {
+      // The sprite lives under the customizable character group. Counteract
+      // that group's scale so width/height/depth morphs never stretch the
+      // 4:1 nameplate canvas or change its readable world-space size.
+      const scaleX = Math.max(Math.abs(this.group.scale.x), 0.001);
+      const scaleY = Math.max(Math.abs(this.group.scale.y), 0.001);
+      const scaleZ = Math.max(Math.abs(this.group.scale.z), 0.001);
+      this.nametagSprite.scale.set(1.5 / scaleX, 0.375 / scaleY, 1 / scaleZ);
+    }
+
     if (this.mixer) {
       this.mixer.update(dt);
       

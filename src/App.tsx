@@ -262,16 +262,20 @@ export default function App() {
 
     const width = window.innerWidth;
     const height = window.innerHeight;
+    const isCoarsePointerDevice = window.matchMedia('(pointer: coarse)').matches;
 
     // --- 1. RENDERER INITIALIZATION ---
     const renderer = new THREE.WebGLRenderer({
       canvas: canvasRef.current,
-      antialias: true,
-      alpha: true, // Transparent WebGL background reveals the beautiful radial galaxy grid underneath!
-      powerPreference: 'high-performance',
+      // High-DPI mobile GPUs can fail or repeatedly lose the oversized
+      // multisampled framebuffer, producing a black view with intermittent
+      // valid frames. Desktop keeps the higher-fidelity render path.
+      antialias: !isCoarsePointerDevice,
+      alpha: !isCoarsePointerDevice,
+      powerPreference: isCoarsePointerDevice ? 'default' : 'high-performance',
     });
     renderer.setSize(width, height);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isCoarsePointerDevice ? 1 : 2));
     renderer.shadowMap.enabled = false;
     renderer.shadowMap.type = THREE.PCFShadowMap;
     // CRITICAL: Prevent auto-clearing to enable dual-scene overlay pipeline
@@ -842,6 +846,12 @@ export default function App() {
         maxPixelRatio = 0.5;
       } else { // 'potato'
         maxPixelRatio = 0.25;
+      }
+
+      // Never recreate an oversized framebuffer on touch-first mobile/tablet
+      // devices when layout or fullscreen state changes.
+      if (isCoarsePointerDevice) {
+        maxPixelRatio = Math.min(maxPixelRatio, 1);
       }
 
       const prevShadowMapEnabled = renderer.shadowMap.enabled;
@@ -2555,7 +2565,7 @@ export default function App() {
       // Clear viewport canvas colors
       renderer.clear();
 
-            // PASS 1: Render 3D World (Main scene)
+      // PASS 1: Render 3D World (Main scene)
       renderer.render(scene, camera);
       let totalCalls = renderer.info.render.calls;
       let totalTriangles = renderer.info.render.triangles;

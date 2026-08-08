@@ -566,7 +566,7 @@ export class WorldGrid {
         const treeScale = (5.0 + this.seededRandom(baseSeed, i * 19) * 20.0) * baseTreeScale;
         const treeRotY = this.seededRandom(baseSeed, i * 23) * Math.PI * 2;
         
-        // We will store the transforms and create an InstancedMesh at the end of the chunk generation
+        // Store transforms until the tree prototype meshes are assembled below.
         if (!chunkGroup.userData.treeTransforms) {
             chunkGroup.userData.treeTransforms = [];
         }
@@ -655,26 +655,20 @@ export class WorldGrid {
                 const index = parseInt(indexStr);
                 const proto = this.treePrototypes[index % this.treePrototypes.length];
                 
-                // Add an InstancedMesh for EVERY sub-mesh in the tree prototype
+                // Trees use ordinary meshes rather than InstancedMesh. Besides
+                // avoiding corrupt instance transforms on some mobile GPUs,
+                // individual tree objects can later be cut down or otherwise
+                // changed independently during gameplay.
                 proto.meshes.forEach((protoMesh) => {
-                    const instancedTree = new THREE.InstancedMesh(
-                        protoMesh.geometry,
-                        protoMesh.material,
-                        tGroup.length
-                    );
-                    instancedTree.castShadow = true;
-                    instancedTree.receiveShadow = true;
-                    
-                    const dummy = new THREE.Object3D();
-                    tGroup.forEach((t: any, i: number) => {
-                        dummy.position.copy(t.position);
-                        dummy.rotation.copy(t.rotation);
-                        dummy.scale.copy(t.scale);
-                        dummy.updateMatrix();
-                        instancedTree.setMatrixAt(i, dummy.matrix);
-                    });
-                    instancedTree.instanceMatrix.needsUpdate = true;
-                    chunkGroup.add(instancedTree);
+                  tGroup.forEach((t: any) => {
+                    const treeMesh = new THREE.Mesh(protoMesh.geometry, protoMesh.material);
+                    treeMesh.position.copy(t.position);
+                    treeMesh.rotation.copy(t.rotation);
+                    treeMesh.scale.copy(t.scale);
+                    treeMesh.castShadow = true;
+                    treeMesh.receiveShadow = true;
+                    chunkGroup.add(treeMesh);
+                  });
                 });
 
                 // Add logic objects for collision just once per tree group
